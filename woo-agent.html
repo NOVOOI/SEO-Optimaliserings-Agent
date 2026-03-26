@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="no" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SEO Optimalisering Agent</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232D5243'/><text x='16' y='22' font-family='Georgia,serif' font-size='11' font-weight='700' fill='white' text-anchor='middle' letter-spacing='-0.5'>SEO</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F4F1EC;--surface:#FFFFFF;--border:#E2DDD4;--border2:#CCC8BF;
+  --text:#1C1B18;--muted:#7A7669;--accent:#2D5243;--accent-l:#E8F0EC;
+  --warm:#B8622A;--warm-l:#F7EDE5;
+  --add-bg:#E4F2EB;--add-txt:#1A5C34;
+  --del-bg:#FAE8E6;--del-txt:#8B2A23;
+  --warn-bg:#FEF3C7;--warn-txt:#92400E;
+  --info-bg:#E6F1FB;--info-txt:#185FA5;
+  --radius:10px;--shadow:0 1px 3px rgba(0,0,0,.07),0 4px 12px rgba(0,0,0,.04);
+  --font-ui:'Instrument Sans',sans-serif;--font-hd:'DM Serif Display',serif;--font-mo:'JetBrains Mono',monospace;
+  --sidebar:280px;--header:56px;--stats-w:340px;
+}
+[data-theme="dark"]{
+  --bg:#141412;--surface:#1E1D1A;--border:#2D2C28;--border2:#3D3C38;
+  --text:#E8E5DF;--muted:#8A8780;--accent:#4A8B6E;--accent-l:#1A2E26;
+  --warm:#D4834A;--warm-l:#2A1A0E;
+  --add-bg:#142B1E;--add-txt:#5DBF8A;
+  --del-bg:#2A1210;--del-txt:#D4756F;
+  --warn-bg:#2A2010;--warn-txt:#D4A855;
+  --info-bg:#0A1E2E;--info-txt:#5BA0D4;
+}
+body{font-family:var(--font-ui);background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;min-height:100vh;transition:background .2s,color .2s}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes checkPop{0%{transform:scale(0.5);opacity:0}60%{transform:scale(1.2)}100%{transform:scale(1);opacity:1}}
+@keyframes flashGreen{0%,100%{background:var(--add-bg)}50%{background:#bfead0}}
+@keyframes pulseWarn{0%,100%{opacity:1}50%{opacity:.6}}
+
+/* CONFIG */
+#config-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:1000;animation:fadeIn .3s ease}
+#config-overlay.hidden{display:none}
+.config-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:44px;width:430px;box-shadow:0 8px 40px rgba(0,0,0,.10)}
+.config-card h1{font-family:var(--font-hd);font-size:28px;font-weight:400;margin-bottom:5px}
+.config-card .subtitle{color:var(--muted);margin-bottom:24px;font-size:13px}
+.field-group{margin-bottom:13px}
+.field-group label{display:block;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;margin-bottom:5px}
+.field-group input{width:100%;padding:9px 13px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-ui);font-size:14px;background:var(--bg);color:var(--text);transition:border-color .15s;outline:none}
+.field-group input:focus{border-color:var(--accent);background:var(--surface)}
+.field-group input::placeholder{color:var(--border2)}
+.demo-notice{background:var(--warm-l);border:1px solid #E8C4A8;border-radius:var(--radius);padding:11px 14px;font-size:12.5px;color:var(--warm);margin-bottom:20px;display:flex;gap:8px}
+.btn-primary{display:block;width:100%;padding:11px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-family:var(--font-ui);font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s;margin-top:8px}
+.btn-primary:hover{opacity:.88}
+.btn-demo{display:block;width:100%;padding:10px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-ui);font-size:13px;cursor:pointer;transition:all .15s;margin-top:8px;text-align:center}
+.btn-demo:hover{background:var(--bg);color:var(--text)}
+
+/* APP SHELL */
+#app{display:flex;height:100vh;flex-direction:column}
+#app.hidden{display:none}
+.app-header{height:var(--header);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:8px;flex-shrink:0;z-index:50}
+.app-logo{font-family:var(--font-hd);font-size:20px;color:var(--accent);letter-spacing:-.01em;margin-right:4px}
+.app-logo span{color:var(--warm)}
+.header-site{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:4px 11px 4px 9px}
+.site-dot{width:7px;height:7px;background:#4CAF50;border-radius:50%}
+.header-sep{flex:1}
+.h-btn{padding:6px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:var(--font-ui);font-size:12.5px;color:var(--text);cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.h-btn:hover{background:var(--border)}
+.h-btn:disabled{opacity:.35;cursor:default}
+.h-btn.active{background:var(--accent-l);border-color:#B8D4C8;color:var(--accent)}
+.h-btn.undo-btn{color:var(--info-txt);border-color:var(--info-bg);background:var(--info-bg)}
+.h-btn.undo-btn:hover{opacity:.85}
+
+/* LAYOUT */
+.layout{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:var(--sidebar);flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.sidebar-top{padding:11px 11px 8px;border-bottom:1px solid var(--border)}
+.sidebar-title{font-size:10.5px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px}
+.search-box{display:flex;align-items:center;gap:7px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 10px}
+.search-box input{border:none;background:none;font-family:var(--font-ui);font-size:13px;color:var(--text);width:100%;outline:none}
+.search-box input::placeholder{color:var(--border2)}
+.sidebar-filters{display:flex;gap:5px;margin-top:7px}
+.filter-chip{padding:3px 9px;border-radius:20px;font-size:11px;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--muted);transition:all .15s}
+.filter-chip.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.product-list{flex:1;min-height:0;overflow-y:auto;padding:5px}
+.product-item{padding:9px 9px 9px 13px;border-radius:8px;cursor:pointer;transition:background .12s;margin-bottom:2px;display:flex;align-items:center;gap:9px;border:1px solid transparent;position:relative}
+.product-item::before{content:'';position:absolute;left:0;top:4px;bottom:4px;width:3px;border-radius:0 2px 2px 0;background:var(--brand-color,transparent)}
+.product-item:hover{background:var(--bg)}
+.product-item.active{background:var(--accent-l);border-color:#B8D4C8}
+.product-thumb{width:34px;height:34px;border-radius:6px;background:var(--bg);border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px}
+.product-info{flex:1;min-width:0}
+.product-name{font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.product-sku{font-size:10px;color:var(--muted);font-family:var(--font-mo);margin-top:1px}
+.product-progress{width:100%;height:3px;background:var(--border);border-radius:2px;margin-top:5px;overflow:hidden}
+.product-progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .4s}
+.badge{font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;white-space:nowrap}
+.badge.pending{background:var(--warn-bg);color:var(--warn-txt)}
+.badge.done{background:var(--add-bg);color:var(--add-txt)}
+.sidebar-footer{padding:8px 11px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);display:flex;justify-content:space-between}
+
+/* MAIN */
+.main{flex:1;min-height:0;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:16px;transition:margin-right .3s}
+.main.stats-open{margin-right:var(--stats-w)}
+.empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted);text-align:center}
+.empty-state .icon{font-size:34px;opacity:.3}
+.empty-state h2{font-family:var(--font-hd);font-weight:400;font-size:20px;color:var(--text);opacity:.45}
+.empty-state p{font-size:13px;max-width:240px}
+
+/* MISSING BANNER */
+.missing-banner{background:var(--warn-bg);border:1px solid #E8C890;border-radius:10px;padding:10px 14px;display:flex;gap:10px}
+.missing-banner .wi{font-size:15px;flex-shrink:0;animation:pulseWarn 2s ease infinite}
+.missing-banner strong{font-size:12.5px;color:var(--warn-txt);font-weight:600;display:block;margin-bottom:3px}
+.missing-banner ul{list-style:none}
+.missing-banner li{font-size:12px;color:var(--warn-txt);margin-bottom:2px}
+
+/* PRODUCT HEADER */
+.product-header-bar{display:flex;align-items:flex-start;gap:13px}
+.prod-icon{font-size:26px;width:50px;height:50px;background:var(--surface);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
+.brand-badge{position:absolute;bottom:-5px;right:-5px;width:15px;height:15px;border-radius:50%;border:2px solid var(--surface)}
+.prod-meta{flex:1}
+.prod-title{font-family:var(--font-hd);font-size:21px;font-weight:400;line-height:1.2}
+.prod-sub{font-size:12px;color:var(--muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.brand-tag{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:2px 9px;font-weight:500;color:var(--text);font-size:12px}
+.progress-wrap{margin-top:9px;display:flex;align-items:center;gap:9px}
+.progress-bar{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.progress-bar-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .5s ease}
+.progress-label{font-size:12px;color:var(--muted);white-space:nowrap}
+.time-estimate{font-size:11px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:2px 7px;white-space:nowrap}
+
+/* FIELD CARDS */
+.field-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);animation:slideUp .2s ease both}
+.field-card:nth-child(1){animation-delay:.04s}.field-card:nth-child(2){animation-delay:.08s}
+.field-card:nth-child(3){animation-delay:.12s}.field-card:nth-child(4){animation-delay:.16s}
+.field-card.just-approved .field-card-header.approved{animation:flashGreen .6s ease}
+.field-card-header{padding:11px 15px;display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;transition:background .12s;border-bottom:1px solid transparent}
+.field-card-header:hover{background:var(--bg)}
+.field-card-header.approved{background:var(--add-bg);border-bottom-color:#C4E8D4}
+.field-card-header.skipped{opacity:.6}
+.field-icon{width:29px;height:29px;border-radius:7px;background:var(--accent-l);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.field-icon.warm{background:var(--warm-l)}
+.field-header-text{flex:1;min-width:0}
+.field-title{font-weight:600;font-size:13px}
+.field-subtitle{font-size:11px;color:var(--muted);margin-top:1px}
+.quality-pills{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
+.q-pill{font-size:10px;font-weight:600;padding:1px 5px;border-radius:8px;font-family:var(--font-mo)}
+.q-pill.ok{background:var(--add-bg);color:var(--add-txt)}
+.q-pill.fail{background:var(--del-bg);color:var(--del-txt)}
+.q-pill.warn{background:var(--warn-bg);color:var(--warn-txt)}
+.field-status{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;flex-shrink:0}
+.field-status.pending{color:var(--warn-txt)}
+.field-status.approved{color:var(--add-txt)}
+.field-status.skipped{color:var(--muted)}
+.status-icon.approved{animation:checkPop .4s ease both}
+.chevron{width:15px;height:15px;color:var(--muted);transition:transform .2s;flex-shrink:0}
+.chevron.open{transform:rotate(180deg)}
+.field-body{display:none}
+.field-body.open{display:block}
+.field-tabs{display:flex;border-bottom:1px solid var(--border);background:var(--bg)}
+.field-tab{padding:7px 14px;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;user-select:none}
+.field-tab.active{color:var(--accent);border-bottom-color:var(--accent);background:var(--surface)}
+.field-content{padding:14px}
+.content-panel{display:none}
+.content-panel.active{display:block}
+
+/* TEXT */
+.text-display{font-size:13.5px;line-height:1.7;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+.text-display p{margin-bottom:9px}.text-display p:last-child{margin-bottom:0}
+.text-display ul{margin:7px 0 9px 16px}.text-display li{margin-bottom:3px}
+.text-display.suggestion{background:var(--add-bg);border-color:#B8DFC8;border-left:3px solid var(--accent);position:relative}
+.ai-badge{position:absolute;top:8px;right:9px;font-size:10px;font-weight:600;color:var(--accent);background:var(--accent-l);border-radius:4px;padding:1px 5px;font-family:var(--font-mo)}
+.char-count{font-size:11px;color:var(--muted);margin-top:5px;font-family:var(--font-mo)}
+.char-count.warn{color:var(--warm)}.char-count.ok{color:var(--add-txt)}
+
+/* DIFF */
+.diff-legend{display:flex;gap:10px;margin-bottom:7px;font-size:11px;font-weight:600}
+.diff-legend span{display:flex;align-items:center;gap:4px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.diff-wrap{font-size:13px;line-height:1.9;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+.diff-add{background:var(--add-bg);color:var(--add-txt);border-radius:2px;padding:0 2px}
+.diff-del{background:var(--del-bg);color:var(--del-txt);text-decoration:line-through;border-radius:2px;padding:0 2px;margin-right:1px}
+
+/* SIDE-BY-SIDE EDIT */
+.edit-split{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.split-lbl{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px}
+.edit-area{width:100%;min-height:140px;padding:11px 13px;border:1px solid var(--accent);border-radius:8px;font-family:var(--font-ui);font-size:13.5px;line-height:1.7;color:var(--text);resize:vertical;outline:none;background:var(--surface)}
+
+/* SERP */
+.serp-wrap{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-top:14px}
+.serp-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.serp-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.serp-url{font-size:12px;color:#0F9D58;font-family:var(--font-mo);margin-bottom:2px}
+.serp-title{font-size:18px;color:#1A0DAB;font-weight:400;line-height:1.3;margin-bottom:3px}
+[data-theme="dark"] .serp-title{color:#8AB4F8}
+[data-theme="dark"] .serp-url{color:#81C995}
+.serp-title.toolong{color:#C5221F}
+.serp-meta{font-size:13.5px;color:#4D5156;line-height:1.5}
+[data-theme="dark"] .serp-meta{color:#BDC1C6}
+.serp-counts{display:flex;gap:10px;margin-top:9px;padding-top:9px;border-top:1px solid var(--border)}
+.sc{font-size:11px;font-family:var(--font-mo);padding:2px 7px;border-radius:4px;font-weight:500}
+.sc.ok{background:var(--add-bg);color:var(--add-txt)}.sc.warn{background:var(--warn-bg);color:var(--warn-txt)}
+
+/* ALT */
+.alt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.alt-item{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg)}
+.alt-img{height:90px;background:#E8E4DC;display:flex;align-items:center;justify-content:center;font-size:24px}
+.alt-item-body{padding:9px}
+.alt-lbl{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+.alt-current{font-size:12px;color:var(--muted);font-style:italic;margin-bottom:5px}
+.alt-new{font-size:12px;color:var(--add-txt);background:var(--add-bg);border-radius:4px;padding:4px 7px;border-left:2px solid var(--accent)}
+
+/* YOAST GRID */
+.yoast-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.ysec-title{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+
+/* FIELD ACTIONS */
+.field-actions{padding:10px 15px 12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:var(--bg)}
+.btn{padding:7px 14px;border-radius:8px;font-family:var(--font-ui);font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid transparent;transition:all .15s;display:inline-flex;align-items:center;gap:4px}
+.btn-approve{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-approve:hover{opacity:.85}
+.btn-edit{background:var(--surface);color:var(--text);border-color:var(--border)}
+.btn-edit:hover{background:var(--bg)}
+.btn-skip{background:transparent;color:var(--muted);border-color:transparent}
+.btn-skip:hover{color:var(--text);background:var(--border)}
+.btn-unapprove{background:transparent;color:var(--del-txt);border-color:var(--del-bg);font-size:12px;padding:5px 10px}
+.btn-unapprove:hover{background:var(--del-bg)}
+.ai-note{flex:1;font-size:11px;color:var(--muted);min-width:0}
+
+/* CHANGELOG */
+.changelog{padding:12px 15px;background:var(--bg);border-top:1px solid var(--border)}
+.cl-head{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}
+.cl-entry{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px}
+.cl-entry:last-child{border-bottom:none}
+.cl-time{font-family:var(--font-mo);font-size:10px;color:var(--muted);white-space:nowrap}
+.cl-field{flex:1;color:var(--text)}
+.cl-action{font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px}
+.cl-action.approved{background:var(--add-bg);color:var(--add-txt)}
+.cl-action.skipped{background:var(--bg);color:var(--muted);border:1px solid var(--border)}
+.cl-action.unapproved{background:var(--del-bg);color:var(--del-txt)}
+.cl-empty{font-size:12px;color:var(--border2);font-style:italic}
+
+/* PUBLISH */
+.publish-bar{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:var(--shadow)}
+.publish-info{flex:1;min-width:160px}
+.publish-title{font-weight:600;font-size:14px}
+.publish-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.btn-publish{padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:var(--font-ui);font-size:13.5px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.btn-publish:hover{opacity:.85}.btn-publish:disabled{opacity:.35;cursor:default}
+.btn-dryrun{padding:9px 14px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-family:var(--font-ui);font-size:13px;cursor:pointer;transition:all .15s}
+.btn-dryrun:hover{background:var(--bg);color:var(--text)}
+
+/* STATS PANEL */
+.stats-panel{position:fixed;top:var(--header);right:0;bottom:0;width:var(--stats-w);background:var(--surface);border-left:1px solid var(--border);z-index:40;overflow-y:auto;transform:translateX(100%);transition:transform .3s ease;box-shadow:-4px 0 20px rgba(0,0,0,.07)}
+.stats-panel.open{transform:translateX(0)}
+.stats-inner{padding:18px}
+.s-heading{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.s-heading::after{content:'';flex:1;height:1px;background:var(--border)}
+.stats-section{margin-bottom:20px}
+.ring-wrap{display:flex;align-items:center;gap:14px;padding:12px;background:var(--bg);border-radius:10px;margin-bottom:10px}
+.ring-info .big{font-size:20px;font-weight:600;font-family:var(--font-hd)}
+.ring-info .small{font-size:12px;color:var(--muted);margin-top:2px}
+.stat-row{display:flex;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+.stat-row:last-child{border-bottom:none}
+.stat-row .sname{flex:1;font-weight:500}
+.stat-mini{display:flex;gap:3px}
+.stat-mini span{font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px}
+.time-card{background:var(--warm-l);border:1px solid #E8C4A8;border-radius:10px;padding:11px 13px;display:flex;align-items:center;gap:11px}
+.time-card .t-big{font-family:var(--font-hd);font-size:20px;color:var(--warm)}
+.time-card .t-lbl{font-size:12px;color:var(--warm)}
+.batch-btn{width:100%;padding:8px 13px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:var(--font-ui);font-size:12.5px;font-weight:500;color:var(--text);cursor:pointer;text-align:left;display:flex;align-items:center;gap:7px;margin-bottom:5px;transition:all .15s}
+.batch-btn:hover{background:var(--accent-l);border-color:#B8D4C8;color:var(--accent)}
+.batch-btn .bc{font-size:11px;color:var(--muted);margin-left:auto}
+.cl-stats-entry{display:flex;gap:7px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px}
+.cl-stats-entry:last-child{border-bottom:none}
+.cl-stats-time{font-family:var(--font-mo);font-size:10px;color:var(--muted);white-space:nowrap}
+.stats-close{display:block;width:100%;padding:9px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:var(--font-ui);font-size:13px;color:var(--muted);cursor:pointer;text-align:center;margin-top:6px;transition:all .15s}
+.stats-close:hover{color:var(--text);background:var(--border)}
+
+/* KEYBOARD HELP */
+.kb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:900;animation:fadeIn .15s ease}
+.kb-overlay.hidden{display:none}
+.kb-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px 30px;width:340px;box-shadow:0 8px 40px rgba(0,0,0,.15)}
+.kb-card h3{font-family:var(--font-hd);font-size:20px;font-weight:400;margin-bottom:14px}
+.kb-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px}
+.kb-row:last-child{border-bottom:none}
+.kb-row .ka{color:var(--muted)}
+kbd{display:inline-flex;align-items:center;justify-content:center;background:var(--bg);border:1px solid var(--border2);border-bottom-width:2px;border-radius:5px;padding:2px 7px;font-family:var(--font-mo);font-size:11px;color:var(--text);min-width:26px;text-align:center}
+.kb-close{display:block;width:100%;margin-top:14px;padding:9px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:var(--font-ui);font-size:13px;color:var(--muted);cursor:pointer;text-align:center;transition:all .15s}
+.kb-close:hover{background:var(--border);color:var(--text)}
+
+/* BATCH MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:800;animation:fadeIn .15s ease}
+.modal-overlay.hidden{display:none}
+.modal-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px;width:360px;box-shadow:0 8px 40px rgba(0,0,0,.15)}
+.modal-card h3{font-family:var(--font-hd);font-size:20px;font-weight:400;margin-bottom:7px}
+.modal-card p{font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.5}
+.modal-card p strong{color:var(--text)}
+.modal-actions{display:flex;gap:7px;justify-content:flex-end}
+.btn-confirm{padding:9px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:var(--font-ui);font-size:13.5px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.btn-confirm:hover{opacity:.85}
+.btn-cancel{padding:9px 14px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-family:var(--font-ui);font-size:13px;cursor:pointer;transition:all .15s}
+.btn-cancel:hover{background:var(--bg);color:var(--text)}
+
+/* TOAST */
+.toast{position:fixed;bottom:20px;right:20px;background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,.2);z-index:2000;display:flex;align-items:center;gap:7px;transform:translateY(0);transition:all .3s ease;max-width:300px}
+.toast.success{background:var(--accent)}.toast.warn{background:var(--warm)}
+.toast.hidden{transform:translateY(70px);opacity:0;pointer-events:none}
+</style>
+</head>
+<body>
+
+<!-- CONFIG -->
+<div id="config-overlay">
+  <div class="config-card">
+    <h1>SEO Optimalisering Agent</h1>
+    <p class="subtitle">Koble til din WooCommerce-butikk for å redigere produkttekster med AI.</p>
+    <div class="demo-notice"><span>💡</span><div><strong style="display:block;margin-bottom:2px">Vil du se en demo?</strong>Trykk "Last inn demo" – ingen tilkobling nødvendig.</div></div>
+    <div class="field-group"><label>Backend URL</label><input type="url" id="cfg-backend" placeholder="https://woo-agent.dittnavn.workers.dev"></div>
+    <div class="field-group"><label>WooCommerce nettsted</label><input type="url" id="cfg-site" placeholder="https://dinbutikk.no"></div>
+    <div class="field-group"><label>Consumer Key</label><input type="text" id="cfg-key" placeholder="ck_xxxxxxxxxxxxxxxx"></div>
+    <div class="field-group"><label>Consumer Secret</label><input type="password" id="cfg-secret" placeholder="cs_xxxxxxxxxxxxxxxx"></div>
+    <button class="btn-primary" onclick="connectLive()">Koble til</button>
+    <button class="btn-demo" onclick="loadDemo()">Last inn demo</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+  <header class="app-header">
+    <div class="app-logo">SEO <span>Optimalisering Agent</span></div>
+    <div class="header-site"><div class="site-dot"></div><span id="site-label">Demo</span></div>
+    <div class="header-sep"></div>
+    <button class="h-btn" id="dark-btn" onclick="toggleDark()" title="Bytt tema">☀</button>
+    <button class="h-btn undo-btn" id="undo-btn" onclick="undo()" disabled>↩ Angre</button>
+    <button class="h-btn" id="stats-btn" onclick="toggleStats()">📊 Oversikt</button>
+    <button class="h-btn" onclick="showKb()" title="?">⌨ Snarveger</button>
+    <button class="h-btn" onclick="disconnect()" style="color:var(--del-txt)">Koble fra</button>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="sidebar-title">Produkter</div>
+        <div class="search-box">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="text" id="search-input" placeholder="Søk navn eller SKU…" oninput="renderList()">
+        </div>
+        <div class="sidebar-filters">
+          <div class="filter-chip active" onclick="setFilter('all',this)">Alle</div>
+          <div class="filter-chip" onclick="setFilter('pending',this)">Venter</div>
+          <div class="filter-chip" onclick="setFilter('done',this)">Ferdig</div>
+        </div>
+      </div>
+      <ul class="product-list" id="product-list"></ul>
+      <div class="sidebar-footer"><span id="sb-count">0 produkter</span><span id="sb-time" style="font-family:var(--font-mo)"></span></div>
+    </aside>
+    <main class="main" id="main-panel">
+      <div class="empty-state">
+        <div class="icon">✦</div>
+        <h2>Velg et produkt</h2>
+        <p>Velg et produkt fra listen til venstre for å se AI-forslag og godkjenne endringer.</p>
+        <p style="margin-top:8px;font-size:12px">Trykk <kbd>?</kbd> for tastatursnarveger</p>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- STATS PANEL -->
+<div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
+
+<!-- KEYBOARD HELP -->
+<div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
+  <div class="kb-card">
+    <h3>Tastatursnarveger</h3>
+    <div class="kb-row"><span class="ka">Godkjenn aktivt felt</span><kbd>A</kbd></div>
+    <div class="kb-row"><span class="ka">Hopp over aktivt felt</span><kbd>S</kbd></div>
+    <div class="kb-row"><span class="ka">Neste produkt</span><kbd>→</kbd></div>
+    <div class="kb-row"><span class="ka">Forrige produkt</span><kbd>←</kbd></div>
+    <div class="kb-row"><span class="ka">Angre</span><div><kbd>Ctrl</kbd>+<kbd>Z</kbd></div></div>
+    <div class="kb-row"><span class="ka">Åpne/lukk oversikt</span><kbd>O</kbd></div>
+    <div class="kb-row"><span class="ka">Vis hjelp</span><kbd>?</kbd></div>
+    <button class="kb-close" onclick="hideKb()">Lukk</button>
+  </div>
+</div>
+
+<!-- BATCH MODAL -->
+<div class="modal-overlay hidden" id="batch-modal">
+  <div class="modal-card">
+    <h3 id="batch-title">Hurtiggodkjenning</h3>
+    <p id="batch-desc"></p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeBatch()">Avbryt</button>
+      <button class="btn-confirm" id="batch-confirm">Godkjenn alle</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast hidden" id="toast"></div>
+
+<script>
+/* ── BRAND COLORS ─────────────────────────────── */
+const BRANDS = {
+  'Muuto':{'color':'#2D5243','light':'#E8F0EC'},
+  'Normann Copenhagen':{'color':'#C4622A','light':'#F7EDE5'},
+  'HAY':{'color':'#6B4DA0','light':'#EDE9FE'},
+  '&HAY':{'color':'#6B4DA0','light':'#EDE9FE'},
+  'Fritz Hansen':{'color':'#1A3A5C','light':'#E6F1FB'},
+};
+const FLABELS = {description:'Produktbeskrivelse',shortDescription:'Kort beskrivelse',yoast:'Yoast SEO',altTexts:'Alt-tekster'};
+const FKEYS = ['description','shortDescription','yoast','altTexts'];
+
+/* ── DEMO DATA ─────────────────────────────────── */
+const DEMO = [
+  {id:101,name:'Ami sofa',sku:'MUUTO-AMISOFA-3S',icon:'🛋️',brand:'Muuto',fields:{
+    description:{current:`<p>Ami sofa er en sofamodell fra Muuto.</p><p>Sofaen er behagelig og passer i stuen.</p><ul><li>Bredde: 220 cm</li><li>Dybde: 85 cm</li><li>Høyde: 72 cm</li></ul>`,suggested:`<p>Ami sofa fra Muuto er en moderne og omfavnende sofa designet av TAF Studio. Med sitt karakteristiske bue-formede ryggsystem og myke proporsjoner inviterer den til lange timer i sofaen. Sofaen er like komfortabel som den er vakker, med et samlet uttrykk som fungerer i både moderne og mer klassiske interiører.</p>\n<p>Konstruksjonen er bygd opp rundt et solid treramme-system, og de løse putene gjør den enkel å holde ren og vedlikeholde. Tilgjengelig i et bredt utvalg av tekstiler og farger fra Muutos kolleksjon.</p>\n<ul>\n<li>Bredde: 220 cm</li><li>Dybde: 85 cm</li><li>Sittehøyde: 42 cm</li><li>Totalhøyde: 72 cm</li><li>Vekt: 58 kg</li><li>Ramme: Massivt tre</li>\n</ul>`},
+    shortDescription:{current:'Ami sofa fra Muuto. Laget av TAF Studio. Fås i mange farger og tekstiler.',suggested:'Ami sofa av TAF Studio for Muuto – en omfavnende 3-seter med buet rygg og løse puter. Fås i en rekke tekstiler.'},
+    yoast:{currentTitle:'Ami sofa | Muuto',currentMeta:'Kjøp Ami sofa fra Muuto.',suggestedTitle:'Ami sofa – Muuto | TAF Studio | Kjøp hos oss',suggestedMeta:'Ami sofa fra Muuto er designet av TAF Studio. Omfavnende 3-seter med buet rygg. Rask levering og enkel retur.'},
+    altTexts:[{img:'🛋️',filename:'ami-sofa-front.jpg',current:'sofa',suggested:'Muuto Ami sofa sett forfra i mørk blågrå tekstil'},{img:'🪑',filename:'ami-sofa-side.jpg',current:'',suggested:'Muuto Ami sofa sett fra siden, viser buet ryggform'},{img:'🔍',filename:'ami-sofa-detail.jpg',current:'detalj',suggested:'Nærbilde av pude og trekk på Muuto Ami sofa'}]
+  }},
+  {id:102,name:'Catch stol',sku:'HAY-CATCH-GRN',icon:'🪑',brand:'HAY',fields:{
+    description:{current:`<p>Catch stol er en stol fra HAY.</p>`,suggested:`<p>Catch stol fra HAY er formgitt av Jaime Hayon og kjennetegnes av sine myke, skulpturelle former. Den høye ryggen omfavner brukeren og gir en følelse av privatliv og ro, uten at stolen mister sitt lette og elegante uttrykk. Catch er like naturlig i stuen som på kontoret.</p>\n<p>Stolen er polstret i sin helhet og leveres med ben i lakert eik, sort-farget eik eller krom. Stofftrekket kan velges fra HAYs brede tekstilkolleksjon.</p>\n<ul>\n<li>Bredde: 61 cm</li><li>Dybde: 68 cm</li><li>Totalhøyde: 107 cm</li><li>Sittehøyde: 41 cm</li><li>Vekt: 14 kg</li>\n</ul>`},
+    shortDescription:{current:'Catch stol fra HAY.',suggested:'Catch stol av Jaime Hayon for HAY – skulpturelt polstret lenestol med høy rygg. Leveres med ben i eik eller krom.'},
+    yoast:{currentTitle:'Catch stol',currentMeta:'',suggestedTitle:'Catch stol – HAY | Jaime Hayon | Kjøp her',suggestedMeta:'Catch stol fra HAY, designet av Jaime Hayon. Skulpturell polstret stol med høy rygg. Velg tekstil og benfarge.'},
+    altTexts:[{img:'🪑',filename:'catch-front.jpg',current:'stol',suggested:'HAY Catch stol i grønt stoff sett forfra'},{img:'📐',filename:'catch-angle.jpg',current:'',suggested:'HAY Catch stol i vinklet perspektiv, viser høy rygg og eikeben'}]
+  }},
+  {id:103,name:'Leaf vegglampe',sku:'MUUTO-LEAF-WH',icon:'💡',brand:'Muuto',fields:{
+    description:{current:`<p>Leaf lampe fra Muuto. Vegglampe designet av Henrik Preusche.</p>`,suggested:`<p>Leaf vegglampe fra Muuto er designet av Henrik Preusche og er blitt en av merkets mest ikoniske produkter. Den tynne, bladformede skjermen gir et skulpturelt uttrykk på veggen og kan justeres til ønsket vinkel for å styre lyset. Leaf er en utmerket leselampe ved sengen eller sofaen.</p>\n<ul>\n<li>Høyde: 32 cm</li><li>Bredde: 11 cm</li><li>Lyskilde: E27, maks 10W LED</li><li>Vekt: 0.6 kg</li>\n</ul>`},
+    shortDescription:{current:'Leaf vegglampe fra Muuto av Henrik Preusche.',suggested:'Leaf vegglampe av Henrik Preusche for Muuto – bladformet, justerbar vegglampe. Perfekt som leselampe ved seng eller sofa.'},
+    yoast:{currentTitle:'Leaf lampe – Muuto',currentMeta:'Kjøp Leaf vegglampe fra Muuto.',suggestedTitle:'Leaf vegglampe – Muuto | Henrik Preusche',suggestedMeta:'Leaf vegglampe fra Muuto, designet av Henrik Preusche. Bladformet og justerbar – perfekt leselampe til seng og sofa.'},
+    altTexts:[{img:'💡',filename:'leaf-wall.jpg',current:'lampe',suggested:'Muuto Leaf vegglampe i hvitt festet på lys vegg'},{img:'🔍',filename:'leaf-detail.jpg',current:'detalj',suggested:'Nærbilde av Muuto Leaf lampeskjerm og justeringsmekanisme'}]
+  }},
+  {id:104,name:'Fjord bord',sku:'NORMANN-FJORD-OAK',icon:'🪵',brand:'Normann Copenhagen',fields:{
+    description:{current:`<p>Fjord bord er et spisebord fra Normann Copenhagen.</p>`,suggested:`<p>Fjord spisebord fra Normann Copenhagen er tegnet av Simon Legald og kombinerer rene skandinaviske linjer med solid håndverk. Bordet har en tydelig karakter gjennom de elegante understøttene som danner en enhetlig form fra bordplate til gulv.</p>\n<p>Bordplaten fås i heltre eik eller hvitlakkert MDF, og understillingen leveres i lakkert stål. Fjord passer like godt i en romslig stue som i et dedikert spisekammer.</p>\n<ul>\n<li>Lengde: 210 cm</li><li>Bredde: 100 cm</li><li>Høyde: 73 cm</li><li>Vekt: 62 kg</li><li>Materiale topp: Massiv eik</li><li>Understell: Pulverlakkert stål</li>\n</ul>`},
+    shortDescription:{current:'Fjord bord fra Normann Copenhagen av Simon Legald.',suggested:'Fjord spisebord av Simon Legald for Normann Copenhagen – ovalt bordformat med skulpturelt stålunderstell og bordplate i eik.'},
+    yoast:{currentTitle:'Fjord bord – Normann Copenhagen',currentMeta:'',suggestedTitle:'Fjord bord – Normann Copenhagen | Simon Legald',suggestedMeta:'Fjord spisebord fra Normann Copenhagen. Ovalt design av Simon Legald med understell i stål og bordplate i massiv eik.'},
+    altTexts:[{img:'🪵',filename:'fjord-full.jpg',current:'bord',suggested:'Normann Copenhagen Fjord spisebord i eik sett ovenfra'},{img:'📐',filename:'fjord-base.jpg',current:'',suggested:'Understell på Normann Copenhagen Fjord bord i svart stål'}]
+  }}
+];
+
+/* ── STATE ─────────────────────────────────────── */
+const S={products:[],activeId:null,fieldStates:{},undoStack:[],changelog:[],openFields:{},darkMode:false,statsOpen:false,filter:'all',approvalTimes:[],pendingBatch:null};
+
+/* ── INIT ──────────────────────────────────────── */
+function loadDemo(){
+  S.products=JSON.parse(JSON.stringify(DEMO));
+  S.products.forEach(p=>{
+    S.fieldStates[p.id]={description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending'};
+    S.openFields[p.id]={};
+  });
+  loadFromStorage();
+  $hide('config-overlay');$show('app');
+  document.getElementById('site-label').textContent='Demo-modus';
+  renderList();renderStats();updateUndo();
+  showToast('✦ Demo lastet – 4 produkter klare','success');
+}
+function connectLive(){
+  const site=document.getElementById('cfg-site').value.trim();
+  if(!document.getElementById('cfg-backend').value.trim()||!site){showToast('Fyll inn Backend URL og nettsted');return;}
+  showToast('Ingen backend koblet – bruker demo','warn');
+  loadDemo();
+  try{document.getElementById('site-label').textContent=new URL(site).hostname;}catch(e){}
+}
+function disconnect(){$hide('app');$show('config-overlay');S.activeId=null;}
+
+/* ── PRODUCT LIST ───────────────────────────────── */
+function renderList(){
+  const q=(document.getElementById('search-input').value||'').toLowerCase();
+  const ul=document.getElementById('product-list');ul.innerHTML='';
+  const vis=S.products.filter(p=>{
+    if(q&&!p.name.toLowerCase().includes(q)&&!p.sku.toLowerCase().includes(q))return false;
+    const st=pStatus(p.id);
+    if(S.filter==='pending'&&st==='done')return false;
+    if(S.filter==='done'&&st!=='done')return false;
+    return true;
+  });
+  vis.forEach(p=>{
+    const st=pStatus(p.id);
+    const bc=(BRANDS[p.brand]||{}).color||'transparent';
+    const fs=S.fieldStates[p.id]||{};
+    const app=Object.values(fs).filter(v=>v==='approved').length;
+    const tot=Object.keys(fs).length;
+    const li=document.createElement('li');
+    li.className='product-item'+(S.activeId===p.id?' active':'');
+    li.style.setProperty('--brand-color',bc);
+    li.onclick=()=>selectProduct(p.id);
+    li.innerHTML=`<div class="product-thumb">${p.icon}</div>
+      <div class="product-info">
+        <div class="product-name">${p.name}</div>
+        <div class="product-sku">${p.sku}</div>
+        <div class="product-progress"><div class="product-progress-fill" style="width:${tot?app/tot*100:0}%"></div></div>
+      </div>
+      <span class="badge ${st==='done'?'done':'pending'}">${st==='done'?'Ferdig':'Venter'}</span>`;
+    ul.appendChild(li);
+  });
+  document.getElementById('sb-count').textContent=`${vis.length} produkt${vis.length!==1?'er':''}`;
+  const totPend=S.products.reduce((a,p)=>a+Object.values(S.fieldStates[p.id]||{}).filter(v=>v==='pending').length,0);
+  const avg=S.approvalTimes.length?S.approvalTimes.reduce((a,b)=>a+b,0)/S.approvalTimes.length:40000;
+  const sec=Math.round(totPend*avg/1000);
+  document.getElementById('sb-time').textContent=sec>0?fmtTime(sec):'';
+}
+function setFilter(m,el){S.filter=m;document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');renderList();}
+function pStatus(pid){const fs=S.fieldStates[pid]||{};return Object.values(fs).every(v=>v==='approved'||v==='skipped')?'done':'pending';}
+
+/* ── SELECT / RENDER ────────────────────────────── */
+function selectProduct(id){S.activeId=id;renderList();renderMain();}
+
+function renderMain(){
+  const p=S.products.find(x=>x.id===S.activeId);if(!p)return;
+  const fs=S.fieldStates[p.id]||{};
+  const app=Object.values(fs).filter(v=>v==='approved').length;
+  const tot=Object.keys(fs).length;
+  const bc=BRANDS[p.brand]||{color:'#888'};
+  const warnings=getMissingWarnings(p);
+  const pendF=Object.values(fs).filter(v=>v==='pending').length;
+  const avg=S.approvalTimes.length?S.approvalTimes.reduce((a,b)=>a+b,0)/S.approvalTimes.length:40000;
+  const est=Math.round(pendF*avg/1000);
+  const main=document.getElementById('main-panel');
+  main.innerHTML=`
+    ${warnings.length?`<div class="missing-banner"><span class="wi">⚠</span><div><strong>Mangler i nåværende data:</strong><ul>${warnings.map(w=>`<li>• ${w}</li>`).join('')}</ul></div></div>`:''}
+    <div class="product-header-bar">
+      <div class="prod-icon" style="border-top:3px solid ${bc.color}">${p.icon}<div class="brand-badge" style="background:${bc.color}" title="${p.brand}"></div></div>
+      <div class="prod-meta">
+        <div class="prod-title">${p.name}</div>
+        <div class="prod-sub">
+          <span class="brand-tag" style="border-color:${bc.color}30;color:${bc.color}">${p.brand}</span>
+          <span>📦 ${p.sku}</span><span>🆔 #${p.id}</span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-bar"><div class="progress-bar-fill" style="width:${tot?Math.round(app/tot*100):0}%"></div></div>
+          <span class="progress-label">${app}/${tot} felt godkjent</span>
+          ${est>0?`<span class="time-estimate">⏱ ca. ${fmtTime(est)} igjen</span>`:''}
+        </div>
+      </div>
+    </div>
+    ${buildCard('description','📝','Produktbeskrivelse','Norsk HTML-tekst',p,fs)}
+    ${buildCard('shortDescription','🔤','Kort beskrivelse (SEO)','Engelsk, 120–158 tegn',p,fs)}
+    ${buildCard('yoast','🔍','Yoast SEO','Tittel og meta-description',p,fs)}
+    ${buildCard('altTexts','🖼','Alt-tekster','Bilder i produktet',p,fs)}
+    ${buildChangelog(p.id)}
+    <div class="publish-bar">
+      <div class="publish-info">
+        <div class="publish-title">Klar til publisering</div>
+        <div class="publish-sub">${app} av ${tot} felt godkjent${app<tot?' – godkjenn alle for å aktivere.':' – klar!'}</div>
+      </div>
+      <button class="btn-dryrun" onclick="dryRun()">Tørrkjøring</button>
+      <button class="btn-publish" ${app===tot?'':'disabled'} onclick="publishProduct()">Publiser til WooCommerce</button>
+    </div>`;
+  const of=S.openFields[p.id]||{};
+  Object.entries(of).forEach(([k,v])=>{if(v)openField(k);});
+  if(!Object.values(of).some(Boolean)){
+    const first=FKEYS.find(k=>fs[k]==='pending');
+    if(first)openField(first);
+  }
+}
+
+/* ── FIELD CARD ─────────────────────────────────── */
+function buildCard(key,icon,title,subtitle,p,fs){
+  const state=fs[key]||'pending';
+  const q=getQuality(key,p);
+  const warm=key==='altTexts'||key==='yoast';
+  const si=state==='approved'?'✓':state==='skipped'?'–':'●';
+  const sl=state==='approved'?'Godkjent':state==='skipped'?'Hoppet over':'Venter';
+  const qp=q.map(x=>`<span class="q-pill ${x.ok?'ok':x.warn?'warn':'fail'}">${x.ok?'✓':x.warn?'⚠':'✗'} ${x.label}</span>`).join('');
+  return `<div class="field-card" id="card-${key}">
+    <div class="field-card-header ${state}" onclick="toggleField('${key}')">
+      <div class="field-icon ${warm?'warm':''}">${icon}</div>
+      <div class="field-header-text">
+        <div class="field-title">${title}</div>
+        <div class="field-subtitle">${subtitle}</div>
+        <div class="quality-pills">${qp}</div>
+      </div>
+      <div class="field-status ${state}"><span class="status-icon ${state==='approved'?'approved':''}">${si}</span>${sl}</div>
+      <svg class="chevron" id="chev-${key}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+    </div>
+    <div class="field-body" id="body-${key}">${buildBody(key,p,state)}</div>
+  </div>`;
+}
+
+function buildBody(key,p,state){
+  if(key==='description')return buildDesc(p);
+  if(key==='shortDescription')return buildShort(p);
+  if(key==='yoast')return buildYoast(p);
+  if(key==='altTexts')return buildAlt(p);
+  return '';
+}
+
+/* DESC */
+function buildDesc(p){
+  const f=p.fields.description;
+  const diff=wordDiff(stripHtml(f.current),stripHtml(f.suggested));
+  return `<div class="field-tabs">
+    <div class="field-tab active" onclick="switchTab(this,'dc-cur','dc')">Nåværende</div>
+    <div class="field-tab" onclick="switchTab(this,'dc-sug','dc')">AI-forslag</div>
+    <div class="field-tab" onclick="switchTab(this,'dc-diff','dc')">Diff</div>
+    <div class="field-tab" onclick="switchTab(this,'dc-edit','dc')">Rediger</div>
+  </div>
+  <div class="field-content">
+    <div class="content-panel active" id="dc-cur"><div class="text-display">${f.current}</div></div>
+    <div class="content-panel" id="dc-sug"><div class="text-display suggestion"><span class="ai-badge">✦ AI</span>${f.suggested}</div></div>
+    <div class="content-panel" id="dc-diff">
+      <div class="diff-legend"><span><span class="dot" style="background:var(--del-txt)"></span>Fjernet</span><span><span class="dot" style="background:var(--add-txt)"></span>Lagt til</span></div>
+      <div class="diff-wrap">${diff}</div>
+    </div>
+    <div class="content-panel" id="dc-edit">
+      <div class="edit-split">
+        <div><div class="split-lbl">AI-forslag (referanse)</div><div class="text-display" style="font-size:12.5px;max-height:200px;overflow-y:auto">${f.suggested}</div></div>
+        <div><div class="split-lbl">Din versjon</div><textarea class="edit-area" id="edit-desc">${escA(stripHtml(f.suggested))}</textarea></div>
+      </div>
+    </div>
+  </div>
+  <div class="field-actions"><span class="ai-note">✦ Generert av Claude – verifiser fakta og mål</span>${btns('description',S.fieldStates[S.activeId]?.description||'pending')}</div>`;
+}
+
+/* SHORT DESC */
+function buildShort(p){
+  const f=p.fields.shortDescription;
+  const cc=(f.suggested||'').length;
+  const ccCls=cc>=120&&cc<=158?'ok':cc>0?'warn':'';
+  const diff=wordDiff(f.current||'',f.suggested||'');
+  return `<div class="field-tabs">
+    <div class="field-tab active" onclick="switchTab(this,'sc-cur','sc')">Nåværende</div>
+    <div class="field-tab" onclick="switchTab(this,'sc-sug','sc')">AI-forslag</div>
+    <div class="field-tab" onclick="switchTab(this,'sc-diff','sc')">Diff</div>
+  </div>
+  <div class="field-content">
+    <div class="content-panel active" id="sc-cur"><div class="text-display">${f.current||'<em style="color:var(--muted)">Ingen kort beskrivelse registrert</em>'}</div></div>
+    <div class="content-panel" id="sc-sug">
+      <div class="text-display suggestion"><span class="ai-badge">✦ AI</span>${f.suggested}</div>
+      <div class="char-count ${ccCls}">${cc} tegn ${cc>=120&&cc<=158?'✓ Innenfor 120–158':cc>158?'⚠ Over 158 – forkort teksten':'⚠ Under 120 – utvid teksten'}</div>
+    </div>
+    <div class="content-panel" id="sc-diff">
+      <div class="diff-legend"><span><span class="dot" style="background:var(--del-txt)"></span>Fjernet</span><span><span class="dot" style="background:var(--add-txt)"></span>Lagt til</span></div>
+      <div class="diff-wrap">${diff}</div>
+      <div class="char-count ${ccCls}">${cc} tegn</div>
+    </div>
+  </div>
+  <div class="field-actions"><span class="ai-note">✦ Engelsk, for søkemotorer</span>${btns('shortDescription',S.fieldStates[S.activeId]?.shortDescription||'pending')}</div>`;
+}
+
+/* YOAST */
+function buildYoast(p){
+  const f=p.fields.yoast;
+  const tc=(f.suggestedTitle||'').length;
+  const mc=(f.suggestedMeta||'').length;
+  const tcOk=tc>0&&tc<=60;const mcOk=mc>=120&&mc<=158;
+  const siteUrl='https://dinbutikk.no';
+  const slug=p.name.toLowerCase().replace(/\s+/g,'-');
+  return `<div class="field-content" style="padding-top:13px">
+    <div class="yoast-grid">
+      <div>
+        <div class="ysec-title">SEO-tittel</div>
+        <div style="margin-bottom:8px"><div style="font-size:11px;color:var(--muted);margin-bottom:3px">Nåværende</div>
+          <div class="text-display" style="font-size:13px">${f.currentTitle||'<em style="color:var(--muted)">Tom</em>'}</div></div>
+        <div style="font-size:11px;color:var(--add-txt);margin-bottom:3px">✦ AI-forslag</div>
+        <div class="text-display suggestion" style="font-size:13px"><span class="ai-badge">✦ AI</span>${f.suggestedTitle}</div>
+        <div class="char-count ${tcOk?'ok':'warn'}">${tc} tegn ${tc<=60?'✓ Under 60':'⚠ Over 60 – Google kutter her'}</div>
+      </div>
+      <div>
+        <div class="ysec-title">Meta-description</div>
+        <div style="margin-bottom:8px"><div style="font-size:11px;color:var(--muted);margin-bottom:3px">Nåværende</div>
+          <div class="text-display" style="font-size:13px">${f.currentMeta||'<em style="color:var(--muted)">Tom</em>'}</div></div>
+        <div style="font-size:11px;color:var(--add-txt);margin-bottom:3px">✦ AI-forslag</div>
+        <div class="text-display suggestion" style="font-size:13px"><span class="ai-badge">✦ AI</span>${f.suggestedMeta}</div>
+        <div class="char-count ${mcOk?'ok':'warn'}">${mc} tegn ${mc>=120&&mc<=158?'✓ 120–158':mc>158?'⚠ For lang':'⚠ For kort'}</div>
+      </div>
+    </div>
+    <div class="serp-wrap">
+      <div class="serp-label">Google SERP-forhåndsvisning</div>
+      <div class="serp-url">${siteUrl} › produkter › ${slug}</div>
+      <div class="serp-title ${tc>60?'toolong':''}">${f.suggestedTitle}${tc>60?' ✂':''}</div>
+      <div class="serp-meta">${f.suggestedMeta}</div>
+      <div class="serp-counts">
+        <span class="sc ${tcOk?'ok':'warn'}">Tittel: ${tc}/60 ${tc<=60?'✓':'⚠'}</span>
+        <span class="sc ${mcOk?'ok':'warn'}">Meta: ${mc}/158 ${mcOk?'✓':'⚠'}</span>
+      </div>
+    </div>
+  </div>
+  <div class="field-actions"><span class="ai-note">✦ Skrives til _yoast_wpseo_title / _yoast_wpseo_metadesc</span>${btns('yoast',S.fieldStates[S.activeId]?.yoast||'pending')}</div>`;
+}
+
+/* ALT */
+function buildAlt(p){
+  const imgs=p.fields.altTexts;
+  return `<div class="field-content">
+    <div class="alt-grid">${imgs.map(i=>`<div class="alt-item">
+      <div class="alt-img">${i.img}</div>
+      <div class="alt-item-body">
+        <div class="alt-lbl">Fil</div>
+        <div style="font-size:11px;color:var(--muted);font-family:var(--font-mo);margin-bottom:7px">${i.filename}</div>
+        <div class="alt-lbl">Nåværende</div>
+        <div class="alt-current">${i.current||'<span style="color:var(--del-txt)">Ingen alt-tekst</span>'}</div>
+        <div class="alt-lbl">AI-forslag</div>
+        <div class="alt-new">✦ ${i.suggested}</div>
+      </div>
+    </div>`).join('')}
+    </div>
+  </div>
+  <div class="field-actions"><span class="ai-note">✦ Skrives til WordPress mediebiblioteket</span>${btns('altTexts',S.fieldStates[S.activeId]?.altTexts||'pending')}</div>`;
+}
+
+function btns(key,state){
+  if(state==='approved')return`<button class="btn btn-unapprove" onclick="unapproveField('${key}')">↩ Angre godkjenning</button>`;
+  return`<button class="btn btn-approve" onclick="approveField('${key}')">✓ Godkjenn</button>
+    <button class="btn btn-edit" onclick="focusEdit('${key}')">✎ Rediger</button>
+    <button class="btn btn-skip" onclick="skipField('${key}')">Hopp over</button>`;
+}
+
+/* CHANGELOG */
+function buildChangelog(pid){
+  const e=S.changelog.filter(x=>x.pid===pid).slice(-8).reverse();
+  return `<div class="changelog"><div class="cl-head">Endringslogg</div>
+    ${e.length?e.map(x=>`<div class="cl-entry"><span class="cl-time">${x.ts}</span><span class="cl-field">${FLABELS[x.fkey]||x.fkey}</span><span class="cl-action ${x.action}">${x.action==='approved'?'Godkjent':x.action==='skipped'?'Hoppet over':'Angret'}</span></div>`).join('')
+    :'<div class="cl-empty">Ingen handlinger ennå.</div>'}
+  </div>`;
+}
+
+/* ── FIELD ACTIONS ─────────────────────────────── */
+let _ft=null;
+function approveField(key){
+  if(!S.activeId)return;
+  const prev=S.fieldStates[S.activeId][key];
+  S.undoStack.push({pid:S.activeId,fkey:key,prev});
+  if(S.undoStack.length>30)S.undoStack.shift();
+  const t0=_ft;_ft=Date.now();
+  if(t0){S.approvalTimes.push(Date.now()-t0);if(S.approvalTimes.length>20)S.approvalTimes.shift();}
+  S.fieldStates[S.activeId][key]='approved';
+  addLog(S.activeId,key,'approved');
+  save();updateUndo();
+  const card=document.getElementById(`card-${key}`);
+  if(card){card.classList.add('just-approved');setTimeout(()=>card.classList.remove('just-approved'),700);}
+  renderMain();renderList();renderStats();
+  showToast(`✓ ${FLABELS[key]} godkjent`,'success');
+  setTimeout(()=>{
+    const fs=S.fieldStates[S.activeId]||{};
+    const next=FKEYS.find(k=>fs[k]==='pending');
+    if(next){openField(next);document.getElementById(`card-${next}`)?.scrollIntoView({behavior:'smooth',block:'nearest'});}
+  },350);
+}
+function skipField(key){
+  if(!S.activeId)return;
+  S.undoStack.push({pid:S.activeId,fkey:key,prev:S.fieldStates[S.activeId][key]});
+  S.fieldStates[S.activeId][key]='skipped';
+  addLog(S.activeId,key,'skipped');save();updateUndo();
+  renderMain();renderList();renderStats();showToast(`Hoppet over – ${FLABELS[key]}`);
+}
+function unapproveField(key){
+  if(!S.activeId)return;
+  S.undoStack.push({pid:S.activeId,fkey:key,prev:S.fieldStates[S.activeId][key]});
+  S.fieldStates[S.activeId][key]='pending';
+  addLog(S.activeId,key,'unapproved');save();updateUndo();
+  renderMain();renderList();renderStats();
+}
+function undo(){
+  if(!S.undoStack.length)return;
+  const{pid,fkey,prev}=S.undoStack.pop();
+  S.fieldStates[pid][fkey]=prev;
+  addLog(pid,fkey,'unapproved');save();updateUndo();
+  if(S.activeId===pid)renderMain();
+  renderList();renderStats();showToast(`↩ Angret – ${FLABELS[fkey]}`);
+}
+function updateUndo(){const b=document.getElementById('undo-btn');if(b)b.disabled=!S.undoStack.length;}
+function addLog(pid,fkey,action){
+  const p=S.products.find(x=>x.id===pid);
+  S.changelog.push({ts:now(),pid,pname:p?p.name:'',fkey,action});
+  if(S.changelog.length>200)S.changelog.shift();
+}
+
+/* ── BATCH ─────────────────────────────────────── */
+function startBatch(fkey){
+  const n=S.products.filter(p=>(S.fieldStates[p.id]||{})[fkey]==='pending').length;
+  if(!n){showToast('Ingen ventende felt av denne typen');return;}
+  S.pendingBatch=fkey;
+  document.getElementById('batch-title').textContent=`Godkjenn alle ${FLABELS[fkey]}?`;
+  document.getElementById('batch-desc').innerHTML=`Godkjenner <strong>${FLABELS[fkey]}</strong> for <strong>${n} produkt${n!==1?'er':''}</strong> uten å vurdere hvert forslag individuelt.`;
+  document.getElementById('batch-confirm').onclick=executeBatch;
+  $show('batch-modal');
+}
+function executeBatch(){
+  if(!S.pendingBatch)return;
+  const fkey=S.pendingBatch;let n=0;
+  S.products.forEach(p=>{if((S.fieldStates[p.id]||{})[fkey]==='pending'){S.fieldStates[p.id][fkey]='approved';addLog(p.id,fkey,'approved');n++;}});
+  S.pendingBatch=null;save();closeBatch();
+  if(S.activeId)renderMain();renderList();renderStats();
+  showToast(`✓ ${n} felt godkjent`,'success');
+}
+function closeBatch(){$hide('batch-modal');}
+
+/* ── PUBLISH ────────────────────────────────────── */
+function dryRun(){
+  if(!S.activeId)return;
+  const n=Object.values(S.fieldStates[S.activeId]||{}).filter(v=>v==='approved').length;
+  showToast(`Tørrkjøring: ${n} felt ville blitt oppdatert – ingenting skrevet`);
+}
+function publishProduct(){showToast('✓ Publisert til WooCommerce!','success');}
+
+/* ── STATS ─────────────────────────────────────── */
+function toggleStats(){
+  S.statsOpen=!S.statsOpen;
+  document.getElementById('stats-panel').classList.toggle('open',S.statsOpen);
+  document.getElementById('main-panel').classList.toggle('stats-open',S.statsOpen);
+  document.getElementById('stats-btn').classList.toggle('active',S.statsOpen);
+  if(S.statsOpen)renderStats();
+}
+function renderStats(){
+  if(!S.statsOpen)return;
+  const tot=S.products.length;
+  const done=S.products.filter(p=>pStatus(p.id)==='done').length;
+  const pct=tot?Math.round(done/tot*100):0;
+  const r=30,circ=2*Math.PI*r,fill=circ-(pct/100)*circ;
+  const rows=FKEYS.map(k=>{
+    const app=S.products.filter(p=>(S.fieldStates[p.id]||{})[k]==='approved').length;
+    const skp=S.products.filter(p=>(S.fieldStates[p.id]||{})[k]==='skipped').length;
+    const pen=tot-app-skp;
+    return`<div class="stat-row"><span class="sname">${FLABELS[k]}</span>
+      <div class="stat-mini">
+        <span style="background:var(--add-bg);color:var(--add-txt)">${app}✓</span>
+        <span style="background:var(--warn-bg);color:var(--warn-txt)">${pen}●</span>
+        ${skp?`<span style="background:var(--bg);color:var(--muted);border:1px solid var(--border)">${skp}–</span>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  const totPend=S.products.reduce((a,p)=>a+Object.values(S.fieldStates[p.id]||{}).filter(v=>v==='pending').length,0);
+  const avg=S.approvalTimes.length?S.approvalTimes.reduce((a,b)=>a+b,0)/S.approvalTimes.length:40000;
+  const est=Math.round(totPend*avg/1000);
+  const log=S.changelog.slice(-6).reverse();
+  document.getElementById('stats-inner').innerHTML=`
+    <div style="font-family:var(--font-hd);font-size:20px;font-weight:400;margin-bottom:16px">Oversikt</div>
+    <div class="stats-section">
+      <div class="s-heading">Fremdrift</div>
+      <div class="ring-wrap">
+        <svg width="72" height="72" viewBox="0 0 72 72">
+          <circle cx="36" cy="36" r="${r}" fill="none" stroke="var(--border)" stroke-width="6"/>
+          <circle cx="36" cy="36" r="${r}" fill="none" stroke="var(--accent)" stroke-width="6"
+            stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${fill.toFixed(1)}"
+            stroke-linecap="round" transform="rotate(-90 36 36)" style="transition:stroke-dashoffset .6s"/>
+          <text x="36" y="36" style="font-family:var(--font-hd);font-size:14px;fill:var(--text);text-anchor:middle;dominant-baseline:central">${pct}%</text>
+        </svg>
+        <div class="ring-info"><div class="big">${done}/${tot}</div><div class="small">produkter ferdig</div><div style="font-size:12px;color:var(--muted);margin-top:3px">${totPend} felt gjenstår</div></div>
+      </div>
+      ${est>0?`<div class="time-card"><div class="t-big">⏱ ${fmtTime(est)}</div><div class="t-lbl">estimert gjenstående</div></div>`
+      :`<div class="time-card"><div class="t-big" style="font-size:16px">🎉</div><div class="t-lbl">Alle felt behandlet!</div></div>`}
+    </div>
+    <div class="stats-section"><div class="s-heading">Per felttype</div>${rows}</div>
+    <div class="stats-section">
+      <div class="s-heading">Hurtiggodkjenning</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:9px">Godkjenn én felttype på tvers av alle produkter.</p>
+      ${FKEYS.map(k=>{const n=S.products.filter(p=>(S.fieldStates[p.id]||{})[k]==='pending').length;
+        return`<button class="batch-btn" onclick="startBatch('${k}')"><span>✓ Alle ${FLABELS[k]}</span><span class="bc">${n} venter</span></button>`;}).join('')}
+    </div>
+    <div class="stats-section">
+      <div class="s-heading">Siste handlinger</div>
+      ${log.length?log.map(e=>`<div class="cl-stats-entry"><span class="cl-stats-time">${e.ts}</span>
+        <span><strong>${e.pname}</strong> – ${FLABELS[e.fkey]||e.fkey} <span class="cl-action ${e.action}" style="font-size:10px;padding:1px 5px;border-radius:3px">${e.action==='approved'?'Godkjent':e.action==='skipped'?'Hoppet':'Angret'}</span></span>
+      </div>`).join(''):'<div style="font-size:12px;color:var(--border2);font-style:italic">Ingen handlinger ennå.</div>'}
+    </div>
+    <button class="stats-close" onclick="toggleStats()">Lukk oversikt</button>`;
+}
+
+/* ── QUALITY ────────────────────────────────────── */
+function getQuality(key,p){
+  if(key==='description'){const s=p.fields.description.suggested||'';return[
+    {label:'HTML',ok:/<[^>]+>/.test(s)},{label:'Lengde',ok:s.replace(/<[^>]*>/g,'').length>300},
+    {label:'Liste',ok:/<ul|<li/i.test(s)},{label:'Avsnitt',ok:(s.match(/<p/gi)||[]).length>=2}];}
+  if(key==='shortDescription'){const cc=(p.fields.shortDescription.suggested||'').length;return[
+    {label:'Ikke tom',ok:cc>0},{label:'120-158t',ok:cc>=120&&cc<=158,warn:cc>0&&(cc<120||cc>158)}];}
+  if(key==='yoast'){const f=p.fields.yoast,tc=(f.suggestedTitle||'').length,mc=(f.suggestedMeta||'').length;return[
+    {label:'Tittel<60t',ok:tc>0&&tc<=60,warn:tc>60},{label:'Meta 120-158t',ok:mc>=120&&mc<=158,warn:mc>0&&(mc<120||mc>158)}];}
+  if(key==='altTexts'){const imgs=p.fields.altTexts||[];const allHave=imgs.every(i=>(i.suggested||'').length>15);
+    const avg=imgs.length?imgs.reduce((a,i)=>a+(i.suggested||'').length,0)/imgs.length:0;
+    return[{label:'Alle bilder',ok:allHave},{label:'>15 tegn',ok:avg>15}];}
+  return[];
+}
+function getMissingWarnings(p){
+  const w=[];const f=p.fields;
+  if(!f.description.current||f.description.current.replace(/<[^>]*>/g,'').trim().length<80)w.push('Nåværende beskrivelse er svært kort');
+  if(!f.shortDescription.current||f.shortDescription.current.length<20)w.push('Ingen nåværende kort beskrivelse');
+  const noAlt=(f.altTexts||[]).filter(i=>!i.current||i.current.length<3);
+  if(noAlt.length)w.push(`${noAlt.length} bilde${noAlt.length>1?'r':''} mangler alt-tekst`);
+  if(!f.yoast.currentMeta||f.yoast.currentMeta.length<10)w.push('Ingen nåværende Yoast meta-description');
+  return w;
+}
+
+/* ── WORD DIFF ──────────────────────────────────── */
+function wordDiff(a,b){
+  const ow=(a||'').split(/\s+/).filter(Boolean);
+  const nw=(b||'').split(/\s+/).filter(Boolean);
+  const m=ow.length,n=nw.length;
+  const dp=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)dp[i][j]=ow[i-1]===nw[j-1]?dp[i-1][j-1]+1:Math.max(dp[i-1][j],dp[i][j-1]);
+  const res=[];let i=m,j=n;
+  while(i>0||j>0){
+    if(i>0&&j>0&&ow[i-1]===nw[j-1]){res.unshift({t:'s',w:ow[i-1]});i--;j--;}
+    else if(j>0&&(i===0||dp[i][j-1]>=dp[i-1][j])){res.unshift({t:'a',w:nw[j-1]});j--;}
+    else{res.unshift({t:'d',w:ow[i-1]});i--;}
+  }
+  return res.map(r=>r.t==='s'?`<span>${esc(r.w)} </span>`:r.t==='a'?`<span class="diff-add">${esc(r.w)}</span> `:`<span class="diff-del">${esc(r.w)}</span> `).join('');
+}
+
+/* ── FIELD OPEN/CLOSE ───────────────────────────── */
+function toggleField(key){const b=document.getElementById(`body-${key}`);if(!b)return;b.classList.contains('open')?closeField(key):openField(key);}
+function openField(key){
+  const b=document.getElementById(`body-${key}`),c=document.getElementById(`chev-${key}`);
+  if(!b)return;b.classList.add('open');c&&c.classList.add('open');
+  if(S.activeId){S.openFields[S.activeId]=S.openFields[S.activeId]||{};S.openFields[S.activeId][key]=true;}
+}
+function closeField(key){
+  const b=document.getElementById(`body-${key}`),c=document.getElementById(`chev-${key}`);
+  if(!b)return;b.classList.remove('open');c&&c.classList.remove('open');
+  if(S.activeId){S.openFields[S.activeId]=S.openFields[S.activeId]||{};S.openFields[S.activeId][key]=false;}
+}
+function focusEdit(key){openField(key);if(key==='description'){const t=document.querySelector(`#body-${key} .field-tab:last-child`);if(t)switchTab(t,'dc-edit','dc');}}
+
+/* ── TABS ───────────────────────────────────────── */
+function switchTab(el,tid,prefix){
+  const bar=el.closest('.field-tabs');bar&&bar.querySelectorAll('.field-tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');
+  const body=el.closest('.field-body');body&&body.querySelectorAll('.content-panel').forEach(p=>p.classList.remove('active'));
+  const t=document.getElementById(tid);if(t)t.classList.add('active');
+}
+
+/* ── DARK MODE ─────────────────────────────────── */
+function toggleDark(){
+  S.darkMode=!S.darkMode;
+  document.documentElement.setAttribute('data-theme',S.darkMode?'dark':'light');
+  document.getElementById('dark-btn').textContent=S.darkMode?'🌙':'☀';
+  save();
+}
+
+/* ── KEYBOARD ───────────────────────────────────── */
+document.addEventListener('keydown',e=>{
+  const tag=(document.activeElement.tagName||'').toLowerCase();
+  if(tag==='input'||tag==='textarea')return;
+  if(e.key==='?'||e.key==='/'){e.preventDefault();showKb();return;}
+  if((e.key==='z'||e.key==='Z')&&(e.ctrlKey||e.metaKey)){e.preventDefault();undo();return;}
+  if(e.key==='o'||e.key==='O'){e.preventDefault();toggleStats();return;}
+  if(e.key==='ArrowRight'||e.key==='l'){e.preventDefault();navProduct(1);return;}
+  if(e.key==='ArrowLeft'||e.key==='h'){e.preventDefault();navProduct(-1);return;}
+  if(!S.activeId)return;
+  if(e.key==='a'||e.key==='A'){e.preventDefault();const k=getActiveField();if(k)approveField(k);}
+  if(e.key==='s'||e.key==='S'){e.preventDefault();const k=getActiveField();if(k)skipField(k);}
+});
+function getActiveField(){const fs=S.fieldStates[S.activeId]||{};return FKEYS.find(k=>fs[k]==='pending');}
+function navProduct(dir){const vis=S.products;if(!vis.length)return;const idx=vis.findIndex(p=>p.id===S.activeId);const next=vis[(idx+dir+vis.length)%vis.length];if(next)selectProduct(next.id);}
+function showKb(){$show('kb-overlay');}function hideKb(){$hide('kb-overlay');}
+
+/* ── STORAGE ────────────────────────────────────── */
+function save(){try{localStorage.setItem('woo_agent_v2',JSON.stringify({fieldStates:S.fieldStates,changelog:S.changelog.slice(-100),darkMode:S.darkMode,approvalTimes:S.approvalTimes}));}catch(e){}}
+function loadFromStorage(){try{
+  const d=JSON.parse(localStorage.getItem('woo_agent_v2')||'{}');
+  if(d.fieldStates)Object.keys(d.fieldStates).forEach(pid=>{const np=parseInt(pid);if(S.fieldStates[np])Object.assign(S.fieldStates[np],d.fieldStates[pid]);});
+  if(d.changelog)S.changelog=d.changelog;
+  if(d.approvalTimes)S.approvalTimes=d.approvalTimes;
+  if(d.darkMode){S.darkMode=true;document.documentElement.setAttribute('data-theme','dark');document.getElementById('dark-btn').textContent='🌙';}
+}catch(e){}}
+
+/* ── TOAST ─────────────────────────────────────── */
+function showToast(msg,type){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast ${type||''}`;clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.add('hidden'),3500);}
+
+/* ── HELPERS ────────────────────────────────────── */
+function $show(id){const e=document.getElementById(id);e&&e.classList.remove('hidden');}
+function $hide(id){const e=document.getElementById(id);e&&e.classList.add('hidden');}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function escA(s){return String(s).replace(/"/g,'&quot;');}
+function stripHtml(h){return(h||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();}
+function now(){return new Date().toLocaleTimeString('no-NO',{hour:'2-digit',minute:'2-digit'});}
+function fmtTime(sec){if(sec<60)return`${sec} sek`;const m=Math.floor(sec/60),s=sec%60;if(m<60)return s>0?`${m}m ${s}s`:`${m} min`;return`${Math.floor(m/60)}t ${m%60}m`;}
+</script>
+</body>
+</html>

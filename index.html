@@ -335,7 +335,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <!-- APP -->
 <div id="app" class="hidden">
   <!-- Loading overlay -->
-  <div id="loading-overlay" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:500;gap:14px">
+  <div id="loading-overlay" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.5);flex-direction:column;align-items:center;justify-content:center;z-index:500;gap:14px">
     <div style="width:38px;height:38px;border:3px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite"></div>
     <div id="loading-msg" style="color:#fff;font-size:14px;font-weight:500">Laster produkter…</div>
   </div>
@@ -475,6 +475,7 @@ function loadDemo(){
   });
   loadFromStorage();
   $hide('config-overlay');$show('app');
+  setLoading(false);
   document.getElementById('site-label').textContent='Demo-modus';
   renderList();renderStats();updateUndo();
   showToast('✦ Demo lastet – 4 produkter klare','success');
@@ -668,8 +669,14 @@ Generer følgende og svar KUN med gyldig JSON (ingen markdown, ingen forklaring)
 function setLoading(on, msg=''){
   const ov = document.getElementById('loading-overlay');
   const lm = document.getElementById('loading-msg');
-  if(on){ ov.classList.remove('hidden'); if(msg) lm.textContent=msg; }
-  else  { ov.classList.add('hidden'); }
+  if(on){
+    ov.style.display='flex';
+    ov.classList.remove('hidden');
+    if(msg) lm.textContent=msg;
+  } else {
+    ov.style.display='none';
+    ov.classList.add('hidden');
+  }
 }
 
 function showErrorBanner(msg){

@@ -499,14 +499,12 @@ async function fetchAndLoad(){
   setLoading(true,'Henter produkter fra WooCommerce…');
   try {
     const products = await fetchWooProducts();
-    if(!products.length){ showToast('Ingen produkter funnet','warn'); setLoading(false); return; }
+    if(!products.length){ setLoading(false); showToast('Ingen produkter funnet','warn'); return; }
     setLoading(true,`Fant ${products.length} produkter – genererer AI-forslag…`);
-    S.products = [];
-    S.fieldStates = {};
-    S.openFields = {};
+    S.products = []; S.fieldStates = {}; S.openFields = {};
     for(let i=0; i<products.length; i++){
       const p = products[i];
-      setLoading(true,`Genererer forslag for ${p.name} (${i+1}/${products.length})…`);
+      setLoading(true,`Genererer forslag for "${p.name}" (${i+1}/${products.length})…`);
       const mapped = await mapAndGenerate(p);
       S.products.push(mapped);
       S.fieldStates[mapped.id] = {description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending'};
@@ -516,11 +514,11 @@ async function fetchAndLoad(){
     setLoading(false);
     try{ document.getElementById('site-label').textContent = new URL(CREDS.site).hostname; }catch(e){}
     renderList(); renderStats(); updateUndo();
-    showToast(`✦ ${products.length} produkter lastet med AI-forslag`,'success');
+    showToast(`✦ ${products.length} produkter lastet`,'success');
   } catch(err){
     setLoading(false);
-    showToast('Feil: ' + err.message);
-    console.error(err);
+    console.error('fetchAndLoad feil:', err);
+    showErrorBanner(err.message);
   }
 }
 
@@ -644,7 +642,8 @@ Generer følgende og svar KUN med gyldig JSON (ingen markdown, ingen forklaring)
 
   if(!res.ok){
     const err = await res.json().catch(()=>({}));
-    throw new Error(`Claude API feil: ${err.error?.message || res.status}`);
+    const errMsg = err.error?.message || err.error?.type || res.status;
+    throw new Error(`Claude API: ${errMsg}`);
   }
 
   const data = await res.json();
@@ -670,7 +669,36 @@ function setLoading(on, msg=''){
   const ov = document.getElementById('loading-overlay');
   const lm = document.getElementById('loading-msg');
   if(on){ ov.classList.remove('hidden'); if(msg) lm.textContent=msg; }
-  else   { ov.classList.add('hidden'); }
+  else  { ov.classList.add('hidden'); }
+}
+
+function showErrorBanner(msg){
+  const main = document.getElementById('main-panel');
+  const known = msg.includes('401') ? '❌ Feil API-nøkkel eller manglende tilgang til WooCommerce.'
+    : msg.includes('403')           ? '❌ API-nøkkelen har ikke tilgang. Sjekk at den er satt til Read.'
+    : msg.includes('CORS')          ? '❌ CORS-blokkering: WooCommerce-serveren tillater ikke kall fra nettleseren. Se løsning nedenfor.'
+    : msg.includes('credit')        ? '❌ Claude API: Ingen credits igjen. Fyll på på console.anthropic.com.'
+    : msg.includes('invalid_api_key') || msg.includes('authentication') ? '❌ Claude API-nøkkelen er ugyldig.'
+    : null;
+
+  main.innerHTML = `
+    <div style="background:var(--del-bg);border:1px solid #E8A8A4;border-radius:12px;padding:20px 22px;line-height:1.7">
+      <div style="font-size:15px;font-weight:600;color:var(--del-txt);margin-bottom:10px">⚠ Noe gikk galt</div>
+      <div style="font-size:13px;color:var(--del-txt);margin-bottom:${known?'10px':'0'}">${known||'Feil: '+msg}</div>
+      ${msg.includes('CORS') ? `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:12px;font-size:12.5px;line-height:1.8">
+        <strong>Slik fikser du CORS:</strong><br>
+        Legg til dette i <code>wp-config.php</code> eller via et plugin som "WP CORS":<br>
+        <code style="font-family:var(--font-mo);font-size:11.5px;background:var(--bg);padding:8px 10px;display:block;margin-top:8px;border-radius:6px;overflow-x:auto">
+        header('Access-Control-Allow-Origin: https://novooi.github.io');<br>
+        header('Access-Control-Allow-Headers: Authorization, Content-Type');
+        </code>
+      </div>` : ''}
+      <button onclick="disconnect()" style="margin-top:14px;padding:8px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-family:var(--font-ui);font-size:13px;cursor:pointer">← Tilbake til innstillinger</button>
+      <details style="margin-top:12px"><summary style="font-size:11px;color:var(--muted);cursor:pointer">Teknisk feilmelding</summary>
+        <code style="font-size:11px;font-family:var(--font-mo);color:var(--muted);display:block;margin-top:6px;word-break:break-all">${msg}</code>
+      </details>
+    </div>`;
 }
 function disconnect(){$hide('app');$show('config-overlay');S.activeId=null;}
 

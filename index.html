@@ -316,12 +316,14 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div id="config-overlay">
   <div class="config-card">
     <h1>SEO Optimalisering Agent</h1>
-    <p class="subtitle">Koble til din WooCommerce-butikk for å redigere produkttekster med AI.</p>
+    <p class="subtitle">Kobler til WooCommerce med read-only tilgang og eksporterer godkjente forslag som CSV klar for WP All Import.</p>
     <div class="demo-notice"><span>💡</span><div><strong style="display:block;margin-bottom:2px">Vil du se en demo?</strong>Trykk "Last inn demo" – ingen tilkobling nødvendig.</div></div>
-    <div class="field-group"><label>Backend URL</label><input type="url" id="cfg-backend" placeholder="https://woo-agent.dittnavn.workers.dev"></div>
     <div class="field-group"><label>WooCommerce nettsted</label><input type="url" id="cfg-site" placeholder="https://dinbutikk.no"></div>
-    <div class="field-group"><label>Consumer Key</label><input type="text" id="cfg-key" placeholder="ck_xxxxxxxxxxxxxxxx"></div>
-    <div class="field-group"><label>Consumer Secret</label><input type="password" id="cfg-secret" placeholder="cs_xxxxxxxxxxxxxxxx"></div>
+    <div class="field-group"><label>Consumer Key (read-only)</label><input type="text" id="cfg-key" placeholder="ck_xxxxxxxxxxxxxxxx"></div>
+    <div class="field-group"><label>Consumer Secret (read-only)</label><input type="password" id="cfg-secret" placeholder="cs_xxxxxxxxxxxxxxxx"></div>
+    <div style="font-size:11.5px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:14px;line-height:1.6">
+      ℹ️ Opprett en read-only API-nøkkel under <strong>WooCommerce → Innstillinger → Avansert → REST API</strong>. Agenten skriver aldri direkte til butikken.
+    </div>
     <button class="btn-primary" onclick="connectLive()">Koble til</button>
     <button class="btn-demo" onclick="loadDemo()">Last inn demo</button>
   </div>
@@ -336,6 +338,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
     <button class="h-btn" id="dark-btn" onclick="toggleDark()" title="Bytt tema">☀</button>
     <button class="h-btn undo-btn" id="undo-btn" onclick="undo()" disabled>↩ Angre</button>
     <button class="h-btn" id="stats-btn" onclick="toggleStats()">📊 Oversikt</button>
+    <button class="h-btn" onclick="exportAllCSV()" style="background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600">⬇ Eksporter CSV</button>
     <button class="h-btn" onclick="showKb()" title="?">⌨ Snarveger</button>
     <button class="h-btn" onclick="disconnect()" style="color:var(--del-txt)">Koble fra</button>
   </header>
@@ -415,27 +418,40 @@ const FKEYS = ['description','shortDescription','yoast','altTexts'];
 const DEMO = [
   {id:101,name:'Ami sofa',sku:'MUUTO-AMISOFA-3S',icon:'🛋️',brand:'Muuto',fields:{
     description:{current:`<p>Ami sofa er en sofamodell fra Muuto.</p><p>Sofaen er behagelig og passer i stuen.</p><ul><li>Bredde: 220 cm</li><li>Dybde: 85 cm</li><li>Høyde: 72 cm</li></ul>`,suggested:`<p>Ami sofa fra Muuto er en moderne og omfavnende sofa designet av TAF Studio. Med sitt karakteristiske bue-formede ryggsystem og myke proporsjoner inviterer den til lange timer i sofaen. Sofaen er like komfortabel som den er vakker, med et samlet uttrykk som fungerer i både moderne og mer klassiske interiører.</p>\n<p>Konstruksjonen er bygd opp rundt et solid treramme-system, og de løse putene gjør den enkel å holde ren og vedlikeholde. Tilgjengelig i et bredt utvalg av tekstiler og farger fra Muutos kolleksjon.</p>\n<ul>\n<li>Bredde: 220 cm</li><li>Dybde: 85 cm</li><li>Sittehøyde: 42 cm</li><li>Totalhøyde: 72 cm</li><li>Vekt: 58 kg</li><li>Ramme: Massivt tre</li>\n</ul>`},
-    shortDescription:{current:'Ami sofa fra Muuto. Laget av TAF Studio. Fås i mange farger og tekstiler.',suggested:'Ami sofa av TAF Studio for Muuto – en omfavnende 3-seter med buet rygg og løse puter. Fås i en rekke tekstiler.'},
-    yoast:{currentTitle:'Ami sofa | Muuto',currentMeta:'Kjøp Ami sofa fra Muuto.',suggestedTitle:'Ami sofa – Muuto | TAF Studio | Kjøp hos oss',suggestedMeta:'Ami sofa fra Muuto er designet av TAF Studio. Omfavnende 3-seter med buet rygg. Rask levering og enkel retur.'},
-    altTexts:[{img:'🛋️',filename:'ami-sofa-front.jpg',current:'sofa',suggested:'Muuto Ami sofa sett forfra i mørk blågrå tekstil'},{img:'🪑',filename:'ami-sofa-side.jpg',current:'',suggested:'Muuto Ami sofa sett fra siden, viser buet ryggform'},{img:'🔍',filename:'ami-sofa-detail.jpg',current:'detalj',suggested:'Nærbilde av pude og trekk på Muuto Ami sofa'}]
+    shortDescription:{current:'Ami sofa fra Muuto. Laget av TAF Studio. Fås i mange farger og tekstiler.',suggested:'Ami sofa by TAF Studio for Muuto – a enveloping 3-seater with curved back and loose cushions. Available in a wide range of fabrics.'},
+    yoast:{currentTitle:'Ami sofa | Muuto',currentMeta:'Kjøp Ami sofa fra Muuto.',suggestedTitle:'Ami Sofa – Muuto | TAF Studio | Buy Online',suggestedMeta:'Ami sofa by TAF Studio for Muuto. Enveloping 3-seater with curved back and loose cushions. Fast delivery and easy returns.'},
+    altTexts:[
+      {img:'🛋️',filename:'ami-sofa-front.jpg',currentTitle:'Ami sofa front',suggestedTitle:'Muuto Ami Sofa – TAF Studio – Front',current:'sofa',suggested:'Muuto Ami sofa front view in dark blue-grey fabric'},
+      {img:'🪑',filename:'ami-sofa-side.jpg',currentTitle:'',suggestedTitle:'Muuto Ami Sofa – TAF Studio – Side',current:'',suggested:'Muuto Ami sofa side view showing curved back design'},
+      {img:'🔍',filename:'ami-sofa-detail.jpg',currentTitle:'',suggestedTitle:'Muuto Ami Sofa – TAF Studio – Detail',current:'detalj',suggested:'Close-up of cushion and upholstery on Muuto Ami sofa'}
+    ]
   }},
   {id:102,name:'Catch stol',sku:'HAY-CATCH-GRN',icon:'🪑',brand:'HAY',fields:{
     description:{current:`<p>Catch stol er en stol fra HAY.</p>`,suggested:`<p>Catch stol fra HAY er formgitt av Jaime Hayon og kjennetegnes av sine myke, skulpturelle former. Den høye ryggen omfavner brukeren og gir en følelse av privatliv og ro, uten at stolen mister sitt lette og elegante uttrykk. Catch er like naturlig i stuen som på kontoret.</p>\n<p>Stolen er polstret i sin helhet og leveres med ben i lakert eik, sort-farget eik eller krom. Stofftrekket kan velges fra HAYs brede tekstilkolleksjon.</p>\n<ul>\n<li>Bredde: 61 cm</li><li>Dybde: 68 cm</li><li>Totalhøyde: 107 cm</li><li>Sittehøyde: 41 cm</li><li>Vekt: 14 kg</li>\n</ul>`},
-    shortDescription:{current:'Catch stol fra HAY.',suggested:'Catch stol av Jaime Hayon for HAY – skulpturelt polstret lenestol med høy rygg. Leveres med ben i eik eller krom.'},
-    yoast:{currentTitle:'Catch stol',currentMeta:'',suggestedTitle:'Catch stol – HAY | Jaime Hayon | Kjøp her',suggestedMeta:'Catch stol fra HAY, designet av Jaime Hayon. Skulpturell polstret stol med høy rygg. Velg tekstil og benfarge.'},
-    altTexts:[{img:'🪑',filename:'catch-front.jpg',current:'stol',suggested:'HAY Catch stol i grønt stoff sett forfra'},{img:'📐',filename:'catch-angle.jpg',current:'',suggested:'HAY Catch stol i vinklet perspektiv, viser høy rygg og eikeben'}]
+    shortDescription:{current:'Catch stol fra HAY.',suggested:'Catch chair by Jaime Hayon for HAY – sculptural fully upholstered lounge chair with high back. Available with oak or chrome legs.'},
+    yoast:{currentTitle:'Catch stol',currentMeta:'',suggestedTitle:'Catch Chair – HAY | Jaime Hayon | Buy Online',suggestedMeta:'Catch chair by HAY, designed by Jaime Hayon. Sculptural upholstered chair with high back. Choose your fabric and leg finish.'},
+    altTexts:[
+      {img:'🪑',filename:'catch-front.jpg',currentTitle:'Catch stol',suggestedTitle:'HAY Catch Chair – Jaime Hayon – Front',current:'stol',suggested:'HAY Catch chair in green fabric, front view'},
+      {img:'📐',filename:'catch-angle.jpg',currentTitle:'',suggestedTitle:'HAY Catch Chair – Jaime Hayon – Angle',current:'',suggested:'HAY Catch chair angled view showing high back and oak legs'}
+    ]
   }},
   {id:103,name:'Leaf vegglampe',sku:'MUUTO-LEAF-WH',icon:'💡',brand:'Muuto',fields:{
     description:{current:`<p>Leaf lampe fra Muuto. Vegglampe designet av Henrik Preusche.</p>`,suggested:`<p>Leaf vegglampe fra Muuto er designet av Henrik Preusche og er blitt en av merkets mest ikoniske produkter. Den tynne, bladformede skjermen gir et skulpturelt uttrykk på veggen og kan justeres til ønsket vinkel for å styre lyset. Leaf er en utmerket leselampe ved sengen eller sofaen.</p>\n<ul>\n<li>Høyde: 32 cm</li><li>Bredde: 11 cm</li><li>Lyskilde: E27, maks 10W LED</li><li>Vekt: 0.6 kg</li>\n</ul>`},
-    shortDescription:{current:'Leaf vegglampe fra Muuto av Henrik Preusche.',suggested:'Leaf vegglampe av Henrik Preusche for Muuto – bladformet, justerbar vegglampe. Perfekt som leselampe ved seng eller sofa.'},
-    yoast:{currentTitle:'Leaf lampe – Muuto',currentMeta:'Kjøp Leaf vegglampe fra Muuto.',suggestedTitle:'Leaf vegglampe – Muuto | Henrik Preusche',suggestedMeta:'Leaf vegglampe fra Muuto, designet av Henrik Preusche. Bladformet og justerbar – perfekt leselampe til seng og sofa.'},
-    altTexts:[{img:'💡',filename:'leaf-wall.jpg',current:'lampe',suggested:'Muuto Leaf vegglampe i hvitt festet på lys vegg'},{img:'🔍',filename:'leaf-detail.jpg',current:'detalj',suggested:'Nærbilde av Muuto Leaf lampeskjerm og justeringsmekanisme'}]
+    shortDescription:{current:'Leaf vegglampe fra Muuto av Henrik Preusche.',suggested:'Leaf wall lamp by Henrik Preusche for Muuto – adjustable blade-shaped wall light. Perfect as a reading lamp by the bed or sofa.'},
+    yoast:{currentTitle:'Leaf lampe – Muuto',currentMeta:'Kjøp Leaf vegglampe fra Muuto.',suggestedTitle:'Leaf Wall Lamp – Muuto | Henrik Preusche',suggestedMeta:'Leaf wall lamp by Muuto, designed by Henrik Preusche. Blade-shaped and adjustable – the perfect reading light for bed or sofa.'},
+    altTexts:[
+      {img:'💡',filename:'leaf-wall.jpg',currentTitle:'Leaf lampe',suggestedTitle:'Muuto Leaf Wall Lamp – Henrik Preusche – Wall',current:'lampe',suggested:'Muuto Leaf wall lamp in white mounted on light wall'},
+      {img:'🔍',filename:'leaf-detail.jpg',currentTitle:'',suggestedTitle:'Muuto Leaf Wall Lamp – Henrik Preusche – Detail',current:'detalj',suggested:'Close-up of Muuto Leaf lamp shade and adjustment mechanism'}
+    ]
   }},
   {id:104,name:'Fjord bord',sku:'NORMANN-FJORD-OAK',icon:'🪵',brand:'Normann Copenhagen',fields:{
     description:{current:`<p>Fjord bord er et spisebord fra Normann Copenhagen.</p>`,suggested:`<p>Fjord spisebord fra Normann Copenhagen er tegnet av Simon Legald og kombinerer rene skandinaviske linjer med solid håndverk. Bordet har en tydelig karakter gjennom de elegante understøttene som danner en enhetlig form fra bordplate til gulv.</p>\n<p>Bordplaten fås i heltre eik eller hvitlakkert MDF, og understillingen leveres i lakkert stål. Fjord passer like godt i en romslig stue som i et dedikert spisekammer.</p>\n<ul>\n<li>Lengde: 210 cm</li><li>Bredde: 100 cm</li><li>Høyde: 73 cm</li><li>Vekt: 62 kg</li><li>Materiale topp: Massiv eik</li><li>Understell: Pulverlakkert stål</li>\n</ul>`},
-    shortDescription:{current:'Fjord bord fra Normann Copenhagen av Simon Legald.',suggested:'Fjord spisebord av Simon Legald for Normann Copenhagen – ovalt bordformat med skulpturelt stålunderstell og bordplate i eik.'},
-    yoast:{currentTitle:'Fjord bord – Normann Copenhagen',currentMeta:'',suggestedTitle:'Fjord bord – Normann Copenhagen | Simon Legald',suggestedMeta:'Fjord spisebord fra Normann Copenhagen. Ovalt design av Simon Legald med understell i stål og bordplate i massiv eik.'},
-    altTexts:[{img:'🪵',filename:'fjord-full.jpg',current:'bord',suggested:'Normann Copenhagen Fjord spisebord i eik sett ovenfra'},{img:'📐',filename:'fjord-base.jpg',current:'',suggested:'Understell på Normann Copenhagen Fjord bord i svart stål'}]
+    shortDescription:{current:'Fjord bord fra Normann Copenhagen av Simon Legald.',suggested:'Fjord dining table by Simon Legald for Normann Copenhagen – oval format with sculptural steel base and solid oak tabletop.'},
+    yoast:{currentTitle:'Fjord bord – Normann Copenhagen',currentMeta:'',suggestedTitle:'Fjord Dining Table – Normann Copenhagen | Simon Legald',suggestedMeta:'Fjord dining table by Normann Copenhagen. Oval design by Simon Legald with powder-coated steel base and solid oak tabletop.'},
+    altTexts:[
+      {img:'🪵',filename:'fjord-full.jpg',currentTitle:'Fjord bord',suggestedTitle:'Normann Copenhagen Fjord Table – Simon Legald – Full',current:'bord',suggested:'Normann Copenhagen Fjord dining table in oak, top view'},
+      {img:'📐',filename:'fjord-base.jpg',currentTitle:'',suggestedTitle:'Normann Copenhagen Fjord Table – Simon Legald – Base',current:'',suggested:'Base of Normann Copenhagen Fjord table in black powder-coated steel'}
+    ]
   }}
 ];
 
@@ -457,8 +473,9 @@ function loadDemo(){
 }
 function connectLive(){
   const site=document.getElementById('cfg-site').value.trim();
-  if(!document.getElementById('cfg-backend').value.trim()||!site){showToast('Fyll inn Backend URL og nettsted');return;}
-  showToast('Ingen backend koblet – bruker demo','warn');
+  const key=document.getElementById('cfg-key').value.trim();
+  if(!site||!key){showToast('Fyll inn nettsted og Consumer Key');return;}
+  showToast('Tilkoblet – bruker demo-data (live henting kommer)','warn');
   loadDemo();
   try{document.getElementById('site-label').textContent=new URL(site).hostname;}catch(e){}
 }
@@ -534,18 +551,15 @@ function renderMain(){
         </div>
       </div>
     </div>
-    ${buildCard('description','📝','Produktbeskrivelse','Norsk HTML-tekst',p,fs)}
-    ${buildCard('shortDescription','🔤','Kort beskrivelse (SEO)','Engelsk, 120–158 tegn',p,fs)}
-    ${buildCard('yoast','🔍','Yoast SEO','Tittel og meta-description',p,fs)}
-    ${buildCard('altTexts','🖼','Alt-tekster','Bilder i produktet',p,fs)}
+    ${FKEYS.map(k=>buildCardByKey(k,p,fs)).join('')}
     ${buildChangelog(p.id)}
     <div class="publish-bar">
       <div class="publish-info">
-        <div class="publish-title">Klar til publisering</div>
-        <div class="publish-sub">${app} av ${tot} felt godkjent${app<tot?' – godkjenn alle for å aktivere.':' – klar!'}</div>
+        <div class="publish-title">Eksporter til WP All Import</div>
+        <div class="publish-sub">${app} av ${tot} felt godkjent${app<tot?' – godkjenn felt du vil inkludere i CSV-en.':' – alle felt klare for eksport!'}</div>
       </div>
-      <button class="btn-dryrun" onclick="dryRun()">Tørrkjøring</button>
-      <button class="btn-publish" ${app===tot?'':'disabled'} onclick="publishProduct()">Publiser til WooCommerce</button>
+      <button class="btn-dryrun" onclick="previewCSV()">Forhåndsvis CSV</button>
+      <button class="btn-publish" ${app>0?'':'disabled'} onclick="exportProductCSV(${p.id})">⬇ Eksporter CSV</button>
     </div>`;
   const of=S.openFields[p.id]||{};
   Object.entries(of).forEach(([k,v])=>{if(v)openField(k);});
@@ -556,6 +570,13 @@ function renderMain(){
 }
 
 /* ── FIELD CARD ─────────────────────────────────── */
+function buildCardByKey(key,p,fs){
+  if(key==='description')return buildCard(key,'📝','Produktbeskrivelse','Norsk HTML-tekst',p,fs);
+  if(key==='shortDescription')return buildCard(key,'🔤','Kort beskrivelse (SEO)','Engelsk, 120–158 tegn',p,fs);
+  if(key==='yoast')return buildCard(key,'🔍','Yoast SEO','Engelsk – tittel og meta-description',p,fs);
+  if(key==='altTexts')return buildCard(key,'🖼','Alt-tekster','Engelsk – bilder i produktet',p,fs);
+  return '';
+}
 function buildCard(key,icon,title,subtitle,p,fs){
   const state=fs[key]||'pending';
   const q=getQuality(key,p);
@@ -687,17 +708,21 @@ function buildAlt(p){
     <div class="alt-grid">${imgs.map(i=>`<div class="alt-item">
       <div class="alt-img">${i.img}</div>
       <div class="alt-item-body">
-        <div class="alt-lbl">Fil</div>
-        <div style="font-size:11px;color:var(--muted);font-family:var(--font-mo);margin-bottom:7px">${i.filename}</div>
-        <div class="alt-lbl">Nåværende</div>
+        <div class="alt-lbl">Filnavn</div>
+        <div style="font-size:11px;color:var(--muted);font-family:var(--font-mo);margin-bottom:7px;word-break:break-all">${i.filename}</div>
+        <div class="alt-lbl">Nåværende tittel</div>
+        <div style="font-size:12px;color:var(--muted);font-style:italic;margin-bottom:6px">${i.currentTitle||'<span style="color:var(--del-txt)">Ingen tittel</span>'}</div>
+        <div class="alt-lbl">Foreslått tittel</div>
+        <div style="font-size:12px;color:var(--add-txt);background:var(--add-bg);border-radius:4px;padding:4px 7px;margin-bottom:8px;border-left:2px solid var(--accent)">✦ ${i.suggestedTitle}</div>
+        <div class="alt-lbl">Nåværende alt-tekst</div>
         <div class="alt-current">${i.current||'<span style="color:var(--del-txt)">Ingen alt-tekst</span>'}</div>
-        <div class="alt-lbl">AI-forslag</div>
+        <div class="alt-lbl">Foreslått alt-tekst</div>
         <div class="alt-new">✦ ${i.suggested}</div>
       </div>
     </div>`).join('')}
     </div>
   </div>
-  <div class="field-actions"><span class="ai-note">✦ Skrives til WordPress mediebiblioteket</span>${btns('altTexts',S.fieldStates[S.activeId]?.altTexts||'pending')}</div>`;
+  <div class="field-actions"><span class="ai-note">✦ Oppdaterer tittel og alt-tekst i WordPress mediebiblioteket</span>${btns('altTexts',S.fieldStates[S.activeId]?.altTexts||'pending')}</div>`;
 }
 
 function btns(key,state){
@@ -787,13 +812,116 @@ function executeBatch(){
 }
 function closeBatch(){$hide('batch-modal');}
 
-/* ── PUBLISH ────────────────────────────────────── */
-function dryRun(){
-  if(!S.activeId)return;
-  const n=Object.values(S.fieldStates[S.activeId]||{}).filter(v=>v==='approved').length;
-  showToast(`Tørrkjøring: ${n} felt ville blitt oppdatert – ingenting skrevet`);
+/* ── CSV EXPORT ─────────────────────────────────── */
+function buildCSVRows(products) {
+  // WP All Import compatible columns
+  const headers = [
+    'woo_id','sku','product_name',
+    'description','short_description',
+    'yoast_title','yoast_metadesc',
+    'image_1_alt','image_1_title',
+    'image_2_alt','image_2_title',
+    'image_3_alt','image_3_title',
+  ];
+
+  const rows = products.map(p => {
+    const fs = S.fieldStates[p.id] || {};
+    const f = p.fields;
+
+    const desc     = fs.description === 'approved'      ? f.description.suggested      : '';
+    const shortD   = fs.shortDescription === 'approved' ? f.shortDescription.suggested  : '';
+    const yTitle   = fs.yoast === 'approved'            ? f.yoast.suggestedTitle        : '';
+    const yMeta    = fs.yoast === 'approved'            ? f.yoast.suggestedMeta         : '';
+
+    const imgs = fs.altTexts === 'approved' ? (f.altTexts || []) : [];
+    const imgCols = [0,1,2].flatMap(i => [
+      imgs[i] ? imgs[i].suggested  : '',
+      imgs[i] ? imgs[i].suggestedTitle : '',
+    ]);
+
+    return [p.id, p.sku, p.name, desc, shortD, yTitle, yMeta, ...imgCols];
+  });
+
+  return { headers, rows };
 }
-function publishProduct(){showToast('✓ Publisert til WooCommerce!','success');}
+
+function escapeCSV(val) {
+  const s = String(val ?? '').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function generateCSVString(productIds) {
+  const products = S.products.filter(p => productIds.includes(p.id));
+  const { headers, rows } = buildCSVRows(products);
+  const lines = [
+    headers.map(escapeCSV).join(','),
+    ...rows.map(r => r.map(escapeCSV).join(','))
+  ];
+  return lines.join('\r\n');
+}
+
+function downloadCSV(content, filename) {
+  const bom = '\uFEFF'; // UTF-8 BOM for Excel
+  const blob = new Blob([bom + content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportProductCSV(pid) {
+  const p = S.products.find(x => x.id === pid);
+  const fs = S.fieldStates[pid] || {};
+  const approved = Object.values(fs).filter(v => v === 'approved').length;
+  if (!approved) { showToast('Ingen godkjente felt å eksportere'); return; }
+  const csv = generateCSVString([pid]);
+  const slug = p.name.toLowerCase().replace(/\s+/g, '-');
+  downloadCSV(csv, `seo-${slug}.csv`);
+  showToast(`⬇ CSV eksportert for ${p.name}`, 'success');
+}
+
+function exportAllCSV() {
+  const eligible = S.products.filter(p => {
+    const fs = S.fieldStates[p.id] || {};
+    return Object.values(fs).some(v => v === 'approved');
+  });
+  if (!eligible.length) { showToast('Ingen godkjente felt å eksportere ennå'); return; }
+  const csv = generateCSVString(eligible.map(p => p.id));
+  const date = new Date().toISOString().slice(0,10);
+  downloadCSV(csv, `seo-export-${date}.csv`);
+  showToast(`⬇ Eksporterte ${eligible.length} produkter til CSV`, 'success');
+}
+
+function previewCSV() {
+  if (!S.activeId) return;
+  const p = S.products.find(x => x.id === S.activeId);
+  const fs = S.fieldStates[p.id] || {};
+  const approved = Object.entries(fs).filter(([,v]) => v === 'approved').map(([k]) => FLABELS[k]);
+  if (!approved.length) { showToast('Ingen godkjente felt å forhåndsvise'); return; }
+
+  const { headers, rows } = buildCSVRows([p]);
+  const row = rows[0];
+
+  // Show modal with column preview
+  document.getElementById('batch-title').textContent = 'CSV-forhåndsvisning';
+  document.getElementById('batch-desc').innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Godkjente felt: <strong>${approved.join(', ')}</strong></div>
+    <div style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;overflow-x:hidden">
+      ${headers.map((h,i) => row[i] ? `
+        <div style="padding:7px 11px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start">
+          <span style="font-family:var(--font-mo);font-size:10px;color:var(--muted);padding-top:2px">${h}</span>
+          <span style="font-size:12px;color:var(--text);word-break:break-word;max-height:60px;overflow:hidden">${escapeHTML(String(row[i]).slice(0,120))}${String(row[i]).length>120?'…':''}</span>
+        </div>` : '').join('')}
+    </div>`;
+  document.getElementById('batch-confirm').textContent = '⬇ Eksporter denne';
+  document.getElementById('batch-confirm').onclick = () => { closeBatch(); exportProductCSV(S.activeId); };
+  $show('batch-modal');
+}
+
+function escapeHTML(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 /* ── STATS ─────────────────────────────────────── */
 function toggleStats(){

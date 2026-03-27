@@ -316,13 +316,16 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div id="config-overlay">
   <div class="config-card">
     <h1>SEO Optimalisering Agent</h1>
-    <p class="subtitle">Kobler til WooCommerce med read-only tilgang og eksporterer godkjente forslag som CSV klar for WP All Import.</p>
+    <p class="subtitle">Kobler til WooCommerce med read-only tilgang og genererer AI-forslag via Claude.</p>
     <div class="demo-notice"><span>💡</span><div><strong style="display:block;margin-bottom:2px">Vil du se en demo?</strong>Trykk "Last inn demo" – ingen tilkobling nødvendig.</div></div>
-    <div class="field-group"><label>WooCommerce nettsted</label><input type="url" id="cfg-site" placeholder="https://dinbutikk.no"></div>
-    <div class="field-group"><label>Consumer Key (read-only)</label><input type="text" id="cfg-key" placeholder="ck_xxxxxxxxxxxxxxxx"></div>
-    <div class="field-group"><label>Consumer Secret (read-only)</label><input type="password" id="cfg-secret" placeholder="cs_xxxxxxxxxxxxxxxx"></div>
+    <div style="font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">WooCommerce (read-only)</div>
+    <div class="field-group"><label>Nettsted URL</label><input type="url" id="cfg-site" placeholder="https://dinbutikk.no"></div>
+    <div class="field-group"><label>Consumer Key</label><input type="text" id="cfg-key" placeholder="ck_xxxxxxxxxxxxxxxx"></div>
+    <div class="field-group"><label>Consumer Secret</label><input type="password" id="cfg-secret" placeholder="cs_xxxxxxxxxxxxxxxx"></div>
+    <div style="font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin:14px 0 8px">Anthropic</div>
+    <div class="field-group"><label>Claude API Key</label><input type="password" id="cfg-claude" placeholder="sk-ant-xxxxxxxxxxxxxxxx"></div>
     <div style="font-size:11.5px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:14px;line-height:1.6">
-      ℹ️ Opprett en read-only API-nøkkel under <strong>WooCommerce → Innstillinger → Avansert → REST API</strong>. Agenten skriver aldri direkte til butikken.
+      🔒 Nøkler lagres kun i nettleseren (sessionStorage) og sendes aldri til en ekstern server. WooCommerce-nøkkelen trenger kun <strong>read</strong>-tilgang.
     </div>
     <button class="btn-primary" onclick="connectLive()">Koble til</button>
     <button class="btn-demo" onclick="loadDemo()">Last inn demo</button>
@@ -331,6 +334,11 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 
 <!-- APP -->
 <div id="app" class="hidden">
+  <!-- Loading overlay -->
+  <div id="loading-overlay" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:500;gap:14px">
+    <div style="width:38px;height:38px;border:3px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite"></div>
+    <div id="loading-msg" style="color:#fff;font-size:14px;font-weight:500">Laster produkter…</div>
+  </div>
   <header class="app-header">
     <div class="app-logo">SEO <span>Optimalisering Agent</span></div>
     <div class="header-site"><div class="site-dot"></div><span id="site-label">Demo</span></div>
@@ -471,13 +479,198 @@ function loadDemo(){
   renderList();renderStats();updateUndo();
   showToast('✦ Demo lastet – 4 produkter klare','success');
 }
+/* ── CREDENTIALS ────────────────────────────────── */
+const CREDS = { site:'', key:'', secret:'', claude:'' };
+
 function connectLive(){
-  const site=document.getElementById('cfg-site').value.trim();
-  const key=document.getElementById('cfg-key').value.trim();
-  if(!site||!key){showToast('Fyll inn nettsted og Consumer Key');return;}
-  showToast('Tilkoblet – bruker demo-data (live henting kommer)','warn');
-  loadDemo();
-  try{document.getElementById('site-label').textContent=new URL(site).hostname;}catch(e){}
+  const site = document.getElementById('cfg-site').value.trim().replace(/\/+$/,'');
+  const key  = document.getElementById('cfg-key').value.trim();
+  const sec  = document.getElementById('cfg-secret').value.trim();
+  const cl   = document.getElementById('cfg-claude').value.trim();
+  if(!site||!key||!sec){showToast('Fyll inn nettsted, Consumer Key og Consumer Secret');return;}
+  if(!cl){showToast('Claude API-nøkkel mangler');return;}
+  CREDS.site=site; CREDS.key=key; CREDS.secret=sec; CREDS.claude=cl;
+  sessionStorage.setItem('seo_creds', JSON.stringify(CREDS));
+  fetchAndLoad();
+}
+
+async function fetchAndLoad(){
+  $show('app'); $hide('config-overlay');
+  setLoading(true,'Henter produkter fra WooCommerce…');
+  try {
+    const products = await fetchWooProducts();
+    if(!products.length){ showToast('Ingen produkter funnet','warn'); setLoading(false); return; }
+    setLoading(true,`Fant ${products.length} produkter – genererer AI-forslag…`);
+    S.products = [];
+    S.fieldStates = {};
+    S.openFields = {};
+    for(let i=0; i<products.length; i++){
+      const p = products[i];
+      setLoading(true,`Genererer forslag for ${p.name} (${i+1}/${products.length})…`);
+      const mapped = await mapAndGenerate(p);
+      S.products.push(mapped);
+      S.fieldStates[mapped.id] = {description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending'};
+      S.openFields[mapped.id] = {};
+      renderList();
+    }
+    setLoading(false);
+    try{ document.getElementById('site-label').textContent = new URL(CREDS.site).hostname; }catch(e){}
+    renderList(); renderStats(); updateUndo();
+    showToast(`✦ ${products.length} produkter lastet med AI-forslag`,'success');
+  } catch(err){
+    setLoading(false);
+    showToast('Feil: ' + err.message);
+    console.error(err);
+  }
+}
+
+/* ── WOOCOMMERCE FETCH ──────────────────────────── */
+async function fetchWooProducts(){
+  const auth = btoa(`${CREDS.key}:${CREDS.secret}`);
+  let all = [], page = 1;
+  while(true){
+    const url = `${CREDS.site}/wp-json/wc/v3/products?per_page=50&page=${page}&status=publish`;
+    const res = await fetch(url, { headers:{ 'Authorization': `Basic ${auth}` } });
+    if(!res.ok) throw new Error(`WooCommerce API svarte ${res.status} – sjekk nettsted og nøkler`);
+    const data = await res.json();
+    if(!data.length) break;
+    all = all.concat(data);
+    if(data.length < 50) break;
+    page++;
+  }
+  return all;
+}
+
+/* ── MAP WOO PRODUCT + GENERATE AI ─────────────── */
+const BRAND_ICONS = {'sofa':'🛋️','stol':'🪑','lampe':'💡','bord':'🪵','hylle':'📚','seng':'🛏️','skap':'🚪','pute':'🛋️'};
+
+function guessIcon(name){
+  const n = name.toLowerCase();
+  for(const [k,v] of Object.entries(BRAND_ICONS)) if(n.includes(k)) return v;
+  return '📦';
+}
+
+async function mapAndGenerate(woo){
+  // Extract existing content
+  const currentDesc  = woo.description  || '';
+  const currentShort = woo.short_description || '';
+  const yoastMeta    = woo.meta_data || [];
+  const currentYTitle = yoastMeta.find(m=>m.key==='_yoast_wpseo_title')?.value || '';
+  const currentYMeta  = yoastMeta.find(m=>m.key==='_yoast_wpseo_metadesc')?.value || '';
+
+  // Extract images
+  const images = (woo.images||[]).slice(0,3).map(img=>({
+    img:'🖼️',
+    filename: img.src?.split('/').pop() || '',
+    currentTitle: img.name || '',
+    suggestedTitle: '',
+    current: img.alt || '',
+    suggested: ''
+  }));
+
+  // Detect brand from categories/tags/name
+  const cats = (woo.categories||[]).map(c=>c.name).join(' ');
+  const tags = (woo.tags||[]).map(t=>t.name).join(' ');
+  const brandHint = cats + ' ' + tags;
+  const brand = detectBrand(brandHint, woo.name) || woo.categories?.[0]?.name || 'Ukjent';
+
+  // Generate AI suggestions
+  const suggestions = await generateSuggestions(woo.name, currentDesc, currentShort, brand, images);
+
+  return {
+    id: woo.id,
+    name: woo.name,
+    sku: woo.sku || `WOO-${woo.id}`,
+    icon: guessIcon(woo.name),
+    brand,
+    fields: {
+      description:      { current: currentDesc,  suggested: suggestions.description },
+      shortDescription: { current: currentShort, suggested: suggestions.shortDescription },
+      yoast: {
+        currentTitle: currentYTitle, currentMeta: currentYMeta,
+        suggestedTitle: suggestions.yoastTitle, suggestedMeta: suggestions.yoastMeta
+      },
+      altTexts: images.map((img,i)=>({
+        ...img,
+        suggested: suggestions.altTexts[i] || '',
+        suggestedTitle: suggestions.imageTitles[i] || ''
+      }))
+    }
+  };
+}
+
+function detectBrand(hint, name){
+  const known = ['Muuto','HAY','Normann Copenhagen','Fritz Hansen','Menu','Ferm Living','&Tradition','Gubi','Verpan','LK Hjelle','Svensson','Bolia'];
+  for(const b of known) if(hint.toLowerCase().includes(b.toLowerCase())||name.toLowerCase().includes(b.toLowerCase())) return b;
+  return null;
+}
+
+/* ── CLAUDE AI GENERATION ───────────────────────── */
+async function generateSuggestions(name, currentDesc, currentShort, brand, images){
+  const strippedDesc = currentDesc.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+  const imgNames = images.map(i=>i.filename).filter(Boolean).join(', ');
+
+  const prompt = `Du er en produkttekst-spesialist for en norsk møbel- og interiørbutikk.
+
+Produkt: ${name}
+Merkevare/leverandør: ${brand}
+Eksisterende beskrivelse: ${strippedDesc || '(ingen)'}
+Bilder: ${imgNames || '(ingen filnavn)'}
+
+Generer følgende og svar KUN med gyldig JSON (ingen markdown, ingen forklaring):
+{
+  "description": "Norsk HTML-tekst med <p>avsnitt</p> og <ul><li>punktliste med mål/egenskaper</li></ul>. Minst 2 avsnitt à 4-6 setninger. Ikke skrytete.",
+  "shortDescription": "Engelsk SEO-tekst, nøyaktig 120-158 tegn. Format: [Produktnavn] by [designer/merkevare] – [2-3 nøkkelegenskaper].",
+  "yoastTitle": "Engelsk SEO-tittel, maks 60 tegn. Format: [Produktnavn] – [Merkevare] | [Designer hvis kjent]",
+  "yoastMeta": "Engelsk meta-description, 120-158 tegn. Inkluder produktnavn, merkevare og 1-2 kjøpsargumenter.",
+  "altTexts": ["Engelsk alt-tekst for bilde 1", "Engelsk alt-tekst for bilde 2", "Engelsk alt-tekst for bilde 3"],
+  "imageTitles": ["Merkevare Produktnavn – Designer – Front", "Merkevare Produktnavn – Designer – Side", "Merkevare Produktnavn – Designer – Detail"]
+}`;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': CREDS.claude,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      messages: [{ role:'user', content: prompt }]
+    })
+  });
+
+  if(!res.ok){
+    const err = await res.json().catch(()=>({}));
+    throw new Error(`Claude API feil: ${err.error?.message || res.status}`);
+  }
+
+  const data = await res.json();
+  const text = data.content?.[0]?.text || '{}';
+  try {
+    const clean = text.replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(clean);
+    return {
+      description:        parsed.description        || '',
+      shortDescription:   parsed.shortDescription   || '',
+      yoastTitle:         parsed.yoastTitle          || '',
+      yoastMeta:          parsed.yoastMeta           || '',
+      altTexts:           parsed.altTexts            || ['','',''],
+      imageTitles:        parsed.imageTitles         || ['','',''],
+    };
+  } catch(e){
+    console.warn('JSON parse failed for', name, text);
+    return { description:'', shortDescription:'', yoastTitle:'', yoastMeta:'', altTexts:['','',''], imageTitles:['','',''] };
+  }
+}
+
+function setLoading(on, msg=''){
+  const ov = document.getElementById('loading-overlay');
+  const lm = document.getElementById('loading-msg');
+  if(on){ ov.classList.remove('hidden'); if(msg) lm.textContent=msg; }
+  else   { ov.classList.add('hidden'); }
 }
 function disconnect(){$hide('app');$show('config-overlay');S.activeId=null;}
 

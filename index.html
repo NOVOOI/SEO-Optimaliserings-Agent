@@ -419,8 +419,8 @@ const BRANDS = {
   '&HAY':{'color':'#6B4DA0','light':'#EDE9FE'},
   'Fritz Hansen':{'color':'#1A3A5C','light':'#E6F1FB'},
 };
-const FLABELS = {description:'Produktbeskrivelse',shortDescription:'Kort beskrivelse',yoast:'Yoast SEO',altTexts:'Alt-tekster'};
-const FKEYS = ['description','shortDescription','yoast','altTexts'];
+const FLABELS = {description:'Produktbeskrivelse',shortDescription:'Kort beskrivelse',yoast:'Yoast SEO',altTexts:'Alt-tekster',keyphrase:'Focus Keyphrase',synonyms:'Keyphrase synonyms',tags:'Produkttagger'};
+const FKEYS = ['description','shortDescription','yoast','altTexts','keyphrase','synonyms','tags'];
 
 /* ── DEMO DATA ─────────────────────────────────── */
 const DEMO = [
@@ -432,7 +432,10 @@ const DEMO = [
       {img:'🛋️',filename:'ami-sofa-front.jpg',currentTitle:'Ami sofa front',suggestedTitle:'Muuto Ami Sofa – TAF Studio – Front',current:'sofa',suggested:'Muuto Ami sofa front view in dark blue-grey fabric'},
       {img:'🪑',filename:'ami-sofa-side.jpg',currentTitle:'',suggestedTitle:'Muuto Ami Sofa – TAF Studio – Side',current:'',suggested:'Muuto Ami sofa side view showing curved back design'},
       {img:'🔍',filename:'ami-sofa-detail.jpg',currentTitle:'',suggestedTitle:'Muuto Ami Sofa – TAF Studio – Detail',current:'detalj',suggested:'Close-up of cushion and upholstery on Muuto Ami sofa'}
-    ]
+    ],
+    keyphrase:{current:'',suggested:'Ami sofa Muuto'},
+    synonyms:{current:'',suggested:'Muuto Ami sofa kjøp, Ami sofa TAF Studio, Muuto sofa 3-seter, buy Muuto Ami sofa'},
+    tags:{current:'',suggested:'skandinavisk, tekstil, stue, minimalistisk'}
   }},
   {id:102,name:'Catch stol',sku:'HAY-CATCH-GRN',icon:'🪑',brand:'HAY',fields:{
     description:{current:`<p>Catch stol er en stol fra HAY.</p>`,suggested:`<p>Catch stol fra HAY er formgitt av Jaime Hayon og kjennetegnes av sine myke, skulpturelle former. Den høye ryggen omfavner brukeren og gir en følelse av privatliv og ro, uten at stolen mister sitt lette og elegante uttrykk. Catch er like naturlig i stuen som på kontoret.</p>\n<p>Stolen er polstret i sin helhet og leveres med ben i lakert eik, sort-farget eik eller krom. Stofftrekket kan velges fra HAYs brede tekstilkolleksjon.</p>\n<ul>\n<li>Bredde: 61 cm</li><li>Dybde: 68 cm</li><li>Totalhøyde: 107 cm</li><li>Sittehøyde: 41 cm</li><li>Vekt: 14 kg</li>\n</ul>`},
@@ -441,7 +444,10 @@ const DEMO = [
     altTexts:[
       {img:'🪑',filename:'catch-front.jpg',currentTitle:'Catch stol',suggestedTitle:'HAY Catch Chair – Jaime Hayon – Front',current:'stol',suggested:'HAY Catch chair in green fabric, front view'},
       {img:'📐',filename:'catch-angle.jpg',currentTitle:'',suggestedTitle:'HAY Catch Chair – Jaime Hayon – Angle',current:'',suggested:'HAY Catch chair angled view showing high back and oak legs'}
-    ]
+    ],
+    keyphrase:{current:'',suggested:'Catch chair HAY'},
+    synonyms:{current:'',suggested:'HAY Catch stol kjøp, Catch chair Jaime Hayon, buy HAY Catch chair, HAY lenestol høy rygg'},
+    tags:{current:'',suggested:'skandinavisk, tekstil, stue, moderne'}
   }},
   {id:103,name:'Leaf vegglampe',sku:'MUUTO-LEAF-WH',icon:'💡',brand:'Muuto',fields:{
     description:{current:`<p>Leaf lampe fra Muuto. Vegglampe designet av Henrik Preusche.</p>`,suggested:`<p>Leaf vegglampe fra Muuto er designet av Henrik Preusche og er blitt en av merkets mest ikoniske produkter. Den tynne, bladformede skjermen gir et skulpturelt uttrykk på veggen og kan justeres til ønsket vinkel for å styre lyset. Leaf er en utmerket leselampe ved sengen eller sofaen.</p>\n<ul>\n<li>Høyde: 32 cm</li><li>Bredde: 11 cm</li><li>Lyskilde: E27, maks 10W LED</li><li>Vekt: 0.6 kg</li>\n</ul>`},
@@ -450,7 +456,10 @@ const DEMO = [
     altTexts:[
       {img:'💡',filename:'leaf-wall.jpg',currentTitle:'Leaf lampe',suggestedTitle:'Muuto Leaf Wall Lamp – Henrik Preusche – Wall',current:'lampe',suggested:'Muuto Leaf wall lamp in white mounted on light wall'},
       {img:'🔍',filename:'leaf-detail.jpg',currentTitle:'',suggestedTitle:'Muuto Leaf Wall Lamp – Henrik Preusche – Detail',current:'detalj',suggested:'Close-up of Muuto Leaf lamp shade and adjustment mechanism'}
-    ]
+    ],
+    keyphrase:{current:'',suggested:'Leaf vegglampe Muuto'},
+    synonyms:{current:'',suggested:'Muuto Leaf lampe kjøp, Leaf wall lamp Muuto, Henrik Preusche lampe, Muuto leselampe'},
+    tags:{current:'',suggested:'skandinavisk, minimalistisk, metall, soverom, stue'}
   }},
   {id:104,name:'Fjord bord',sku:'NORMANN-FJORD-OAK',icon:'🪵',brand:'Normann Copenhagen',fields:{
     description:{current:`<p>Fjord bord er et spisebord fra Normann Copenhagen.</p>`,suggested:`<p>Fjord spisebord fra Normann Copenhagen er tegnet av Simon Legald og kombinerer rene skandinaviske linjer med solid håndverk. Bordet har en tydelig karakter gjennom de elegante understøttene som danner en enhetlig form fra bordplate til gulv.</p>\n<p>Bordplaten fås i heltre eik eller hvitlakkert MDF, og understillingen leveres i lakkert stål. Fjord passer like godt i en romslig stue som i et dedikert spisekammer.</p>\n<ul>\n<li>Lengde: 210 cm</li><li>Bredde: 100 cm</li><li>Høyde: 73 cm</li><li>Vekt: 62 kg</li><li>Materiale topp: Massiv eik</li><li>Understell: Pulverlakkert stål</li>\n</ul>`},
@@ -459,7 +468,10 @@ const DEMO = [
     altTexts:[
       {img:'🪵',filename:'fjord-full.jpg',currentTitle:'Fjord bord',suggestedTitle:'Normann Copenhagen Fjord Table – Simon Legald – Full',current:'bord',suggested:'Normann Copenhagen Fjord dining table in oak, top view'},
       {img:'📐',filename:'fjord-base.jpg',currentTitle:'',suggestedTitle:'Normann Copenhagen Fjord Table – Simon Legald – Base',current:'',suggested:'Base of Normann Copenhagen Fjord table in black powder-coated steel'}
-    ]
+    ],
+    keyphrase:{current:'',suggested:'Fjord bord Normann Copenhagen'},
+    synonyms:{current:'',suggested:'Normann Copenhagen Fjord bord kjøp, Fjord dining table, Simon Legald bord, kjøp spisebord eik'},
+    tags:{current:'',suggested:'skandinavisk, tre, metall, spisestue, minimalistisk'}
   }}
 ];
 
@@ -470,7 +482,7 @@ const S={products:[],activeId:null,fieldStates:{},undoStack:[],changelog:[],open
 function loadDemo(){
   S.products=JSON.parse(JSON.stringify(DEMO));
   S.products.forEach(p=>{
-    S.fieldStates[p.id]={description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending'};
+    S.fieldStates[p.id]={description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending',keyphrase:'pending',synonyms:'pending',tags:'pending'};
     S.openFields[p.id]={};
   });
   loadFromStorage();
@@ -508,7 +520,7 @@ async function fetchAndLoad(){
       setLoading(true,`Genererer forslag for "${p.name}" (${i+1}/${products.length})…`);
       const mapped = await mapAndGenerate(p);
       S.products.push(mapped);
-      S.fieldStates[mapped.id] = {description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending'};
+      S.fieldStates[mapped.id]={description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending',keyphrase:'pending',synonyms:'pending',tags:'pending'};
       S.openFields[mapped.id] = {};
       renderList();
     }
@@ -593,7 +605,10 @@ async function mapAndGenerate(woo){
         ...img,
         suggested: suggestions.altTexts[i] || '',
         suggestedTitle: suggestions.imageTitles[i] || ''
-      }))
+      })),
+      keyphrase: { current: '', suggested: suggestions.focusKeyphrase },
+      synonyms:  { current: '', suggested: suggestions.keyphraseSynonyms },
+      tags:      { current: '', suggested: suggestions.tags },
     }
   };
 }
@@ -622,6 +637,9 @@ Generer følgende og svar KUN med gyldig JSON (ingen markdown, ingen forklaring)
   "shortDescription": "Engelsk SEO-tekst, nøyaktig 120-158 tegn. Format: [Produktnavn] by [designer/merkevare] – [2-3 nøkkelegenskaper].",
   "yoastTitle": "Engelsk SEO-tittel, maks 60 tegn. Format: [Produktnavn] | [Merkevare/Leverandør]",
   "yoastMeta": "Engelsk meta-description, 120-158 tegn. Inkluder produktnavn, merkevare og 1-2 kjøpsargumenter.",
+  "focusKeyphrase": "Norsk focus keyphrase for Yoast. Skal være selve produktnavnet slik kunden søker det, f.eks. 'Ami sofa Muuto'. Maks 4 ord.",
+  "keyphraseSynonyms": "Kommaseparert liste med 3-5 end-of-funnel søkefraser på norsk/engelsk. Kunder som søker spesifikt etter akkurat dette produktet. Eksempel: 'Muuto Ami sofa kjøp, buy Ami sofa Norway, Ami sofa TAF Studio'.",
+  "tags": "Kommaseparert liste med maks 8 tagger KUN fra disse kategoriene – STIL (skandinavisk/minimalistisk/industriell/klassisk/moderne/bohemsk/rustikk/japandi), MATERIALE (tre/metall/messing/kopper/keramikk/glass/tekstil/lin/bomull/ull/rotting/marmor/lær), ROM (stue/soverom/kjøkken/bad/gang/kontor/utendørs/barnerom/spisestue), FARGE (hvit/sort/grå/beige/naturlig/varm), EGENSKAP (dimbar/batteridrevet/sammenleggbar/justerbar/håndlaget/bærekraftig). Bruk kun tagger som er åpenbart riktige.",
   "altTexts": ["Engelsk alt-tekst for bilde 1", "Engelsk alt-tekst for bilde 2", "Engelsk alt-tekst for bilde 3"],
   "imageTitles": ["Merkevare Produktnavn – Designer – Front", "Merkevare Produktnavn – Designer – Side", "Merkevare Produktnavn – Designer – Detail"]
 }`;
@@ -657,6 +675,9 @@ Generer følgende og svar KUN med gyldig JSON (ingen markdown, ingen forklaring)
       shortDescription:   parsed.shortDescription   || '',
       yoastTitle:         parsed.yoastTitle          || '',
       yoastMeta:          parsed.yoastMeta           || '',
+      focusKeyphrase:     parsed.focusKeyphrase      || name,
+      keyphraseSynonyms:  parsed.keyphraseSynonyms   || '',
+      tags:               parsed.tags                || '',
       altTexts:           parsed.altTexts            || ['','',''],
       imageTitles:        parsed.imageTitles         || ['','',''],
     };
@@ -803,6 +824,9 @@ function buildCardByKey(key,p,fs){
   if(key==='shortDescription')return buildCard(key,'🔤','Kort beskrivelse (SEO)','Engelsk, 120–158 tegn',p,fs);
   if(key==='yoast')return buildCard(key,'🔍','Yoast SEO','Engelsk – tittel og meta-description',p,fs);
   if(key==='altTexts')return buildCard(key,'🖼','Alt-tekster','Engelsk – bilder i produktet',p,fs);
+  if(key==='keyphrase')return buildCard(key,'🎯','Focus Keyphrase','Primært søkeord for Yoast',p,fs);
+  if(key==='synonyms')return buildCard(key,'🔗','Keyphrase synonyms','End-of-funnel søkefraser',p,fs);
+  if(key==='tags')return buildCard(key,'🏷','Produkttagger','Tagger for AI-salgsassistent og søk',p,fs);
   return '';
 }
 function buildCard(key,icon,title,subtitle,p,fs){
@@ -832,7 +856,48 @@ function buildBody(key,p,state){
   if(key==='shortDescription')return buildShort(p);
   if(key==='yoast')return buildYoast(p);
   if(key==='altTexts')return buildAlt(p);
+  if(key==='keyphrase')return buildSimpleField(p,'keyphrase','🎯','Produktnavnet som Yoast fokus-keyphrase. Skrives på norsk og matcher det kunden søker etter.');
+  if(key==='synonyms')return buildSimpleField(p,'synonyms','🔗','Kommaseparerte søkefraser – end-of-funnel kunder som søker spesifikt etter produktet.');
+  if(key==='tags')return buildTagsField(p);
   return '';
+}
+
+function buildSimpleField(p,key,icon,helpText){
+  const f=p.fields[key];
+  const state=S.fieldStates[p.id]?.[key]||'pending';
+  return `<div class="field-content">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5">${helpText}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Nåværende</div>
+        <div class="text-display" style="min-height:48px">${f.current||'<em style="color:var(--del-txt)">Tom</em>'}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--add-txt);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">✦ AI-forslag</div>
+        <div class="text-display suggestion" style="min-height:48px"><span class="ai-badge">✦ AI</span>${f.suggested}</div>
+      </div>
+    </div>
+  </div>
+  <div class="field-actions"><span class="ai-note">✦ Skrives til Yoast-feltet via WP All Import</span>${btns(key,state)}</div>`;
+}
+
+function buildTagsField(p){
+  const f=p.fields.tags;
+  const state=S.fieldStates[p.id]?.tags||'pending';
+  const suggested=(f.suggested||'').split(',').map(t=>t.trim()).filter(Boolean);
+  const current=(f.current||'').split(',').map(t=>t.trim()).filter(Boolean);
+  return `<div class="field-content">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5">Tagger hjelper AI-salgsassistenten matche produktet med naturlig språk-søk. Maks 8 tagger fra fastsatt taksonomi.</div>
+    ${current.length?`<div style="margin-bottom:10px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Eksisterende tagger</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px">${current.map(t=>`<span style="padding:3px 10px;background:var(--bg);border:1px solid var(--border);border-radius:20px;font-size:12px;color:var(--muted)">${t}</span>`).join('')}</div>
+    </div>`:''}
+    <div>
+      <div style="font-size:11px;font-weight:600;color:var(--add-txt);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">✦ AI-forslag – nye tagger</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px">${suggested.map(t=>`<span style="padding:3px 10px;background:var(--add-bg);border:1px solid #B8DFC8;border-radius:20px;font-size:12px;color:var(--add-txt)">+ ${t}</span>`).join('')}</div>
+    </div>
+  </div>
+  <div class="field-actions"><span class="ai-note">✦ Legges til eksisterende tagger – ikke erstatter</span>${btns('tags',state)}</div>`;
 }
 
 /* DESC */
@@ -1047,6 +1112,8 @@ function buildCSVRows(products) {
     'sku','product_name',
     'description','short_description',
     'yoast_title','yoast_metadesc',
+    'focus_keyphrase','keyphrase_synonyms',
+    'tags',
     'image_1_alt','image_1_title',
     'image_2_alt','image_2_title',
     'image_3_alt','image_3_title',
@@ -1055,19 +1122,19 @@ function buildCSVRows(products) {
   const rows = products.map(p => {
     const fs = S.fieldStates[p.id] || {};
     const f = p.fields;
-
-    const desc     = fs.description === 'approved'      ? f.description.suggested      : '';
-    const shortD   = fs.shortDescription === 'approved' ? f.shortDescription.suggested  : '';
-    const yTitle   = fs.yoast === 'approved'            ? f.yoast.suggestedTitle        : '';
-    const yMeta    = fs.yoast === 'approved'            ? f.yoast.suggestedMeta         : '';
-
+    const desc       = fs.description === 'approved'      ? f.description.suggested      : '';
+    const shortD     = fs.shortDescription === 'approved' ? f.shortDescription.suggested  : '';
+    const yTitle     = fs.yoast === 'approved'            ? f.yoast.suggestedTitle        : '';
+    const yMeta      = fs.yoast === 'approved'            ? f.yoast.suggestedMeta         : '';
+    const keyphrase  = fs.keyphrase === 'approved'        ? f.keyphrase.suggested         : '';
+    const synonyms   = fs.synonyms === 'approved'         ? f.synonyms.suggested          : '';
+    const tags       = fs.tags === 'approved'             ? f.tags.suggested              : '';
     const imgs = fs.altTexts === 'approved' ? (f.altTexts || []) : [];
     const imgCols = [0,1,2].flatMap(i => [
       imgs[i] ? imgs[i].suggested      : '',
       imgs[i] ? imgs[i].suggestedTitle : '',
     ]);
-
-    return [p.sku, p.name, desc, shortD, yTitle, yMeta, ...imgCols];
+    return [p.sku, p.name, desc, shortD, yTitle, yMeta, keyphrase, synonyms, tags, ...imgCols];
   });
 
   return { headers, rows };

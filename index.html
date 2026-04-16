@@ -372,6 +372,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
         </div>
         <div class="sidebar-filters">
           <div class="filter-chip active" onclick="setFilter('all',this)">Alle</div>
+          <div class="filter-chip" onclick="setFilter('unprocessed',this)">Ikke behandlet</div>
           <div class="filter-chip" onclick="setFilter('pending',this)">Venter</div>
           <div class="filter-chip" onclick="setFilter('done',this)">Ferdig</div>
         </div>
@@ -380,11 +381,20 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
       <div class="sidebar-footer"><span id="sb-count">0 produkter</span><span id="sb-time" style="font-family:var(--font-mo)"></span></div>
     </aside>
     <main class="main" id="main-panel">
-      <div class="empty-state">
+      <div class="empty-state" id="empty-state">
         <div class="icon">✦</div>
-        <h2>Velg et produkt</h2>
-        <p>Velg et produkt fra listen til venstre for å se AI-forslag og godkjenne endringer.</p>
-        <p style="margin-top:8px;font-size:12px">Trykk <kbd>?</kbd> for tastatursnarveger</p>
+        <h2>Klar til bruk</h2>
+        <p style="margin-bottom:20px">Velg hvor mange produkter AI skal behandle om gangen, og trykk generer.</p>
+        <div id="batch-control" style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;width:340px;text-align:left;box-shadow:var(--shadow)">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Antall produkter per batch</div>
+          <div style="display:flex;gap:7px;margin-bottom:16px;flex-wrap:wrap">
+            ${[5,10,25,50].map(n=>`<button onclick="setBatchSize(${n},this)" class="batch-size-btn ${n===10?'active':''}" style="padding:7px 16px;border-radius:8px;font-family:var(--font-ui);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;border:1px solid var(--border);background:${n===10?'var(--accent)':'var(--bg)'};color:${n===10?'#fff':'var(--text)'}">${n}</button>`).join('')}
+          </div>
+          <button id="generate-btn" onclick="generateBatch()" style="width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-family:var(--font-ui);font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s">
+            ✦ Generer forslag for neste 10 produkter
+          </button>
+          <div id="batch-progress" style="margin-top:12px;font-size:12px;color:var(--muted);text-align:center"></div>
+        </div>
       </div>
     </main>
   </div>
@@ -488,7 +498,7 @@ const DEMO = [
 ];
 
 /* ── STATE ─────────────────────────────────────── */
-const S={products:[],activeId:null,fieldStates:{},undoStack:[],changelog:[],openFields:{},darkMode:false,statsOpen:false,filter:'all',approvalTimes:[],pendingBatch:null};
+const S={products:[],activeId:null,fieldStates:{},undoStack:[],changelog:[],openFields:{},darkMode:false,statsOpen:false,filter:'all',approvalTimes:[],pendingBatch:null,processed:new Set(),batchSize:10,generating:false};
 
 /* ── INIT ──────────────────────────────────────── */
 function loadDemo(){
@@ -501,7 +511,7 @@ function loadDemo(){
   $hide('config-overlay');$show('app');
   setLoading(false);
   document.getElementById('site-label').textContent='Demo-modus';
-  renderList();renderStats();updateUndo();
+  renderList();renderStats();updateUndo();updateBatchUI();
   showToast('✦ Demo lastet – 4 produkter klare','success');
 }
 /* ── PASSWORD ───────────────────────────────────── */
@@ -533,28 +543,132 @@ async function fetchAndLoad(){
   $show('app'); $hide('config-overlay');
   setLoading(true,'Henter produkter fra WooCommerce…');
   try {
-    const products = await fetchWooProducts();
-    if(!products.length){ setLoading(false); showToast('Ingen produkter funnet','warn'); return; }
-    setLoading(true,`Fant ${products.length} produkter – genererer AI-forslag…`);
-    S.products = []; S.fieldStates = {}; S.openFields = {};
-    for(let i=0; i<products.length; i++){
-      const p = products[i];
-      setLoading(true,`Genererer forslag for "${p.name}" (${i+1}/${products.length})…`);
-      const mapped = await mapAndGenerate(p);
+    const raw = await fetchWooProducts();
+    if(!raw.length){ setLoading(false); showToast('Ingen produkter funnet','warn'); return; }
+
+    // Map raw WooCommerce data without generating AI yet
+    S.products=[]; S.fieldStates={}; S.openFields={}; S.processed=new Set();
+    for(const p of raw){
+      const mapped = mapRaw(p);
       S.products.push(mapped);
-      S.fieldStates[mapped.id]={description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending',keyphrase:'pending',synonyms:'pending',tags:'pending'};
-      S.openFields[mapped.id] = {};
-      renderList();
+      S.fieldStates[mapped.id]={description:'unprocessed',shortDescription:'unprocessed',yoast:'unprocessed',altTexts:'unprocessed',keyphrase:'unprocessed',synonyms:'unprocessed',tags:'unprocessed'};
+      S.openFields[mapped.id]={};
     }
+
     setLoading(false);
-    try{ document.getElementById('site-label').textContent = new URL(CREDS.site).hostname; }catch(e){}
-    renderList(); renderStats(); updateUndo();
-    showToast(`✦ ${products.length} produkter lastet`,'success');
+    try{ document.getElementById('site-label').textContent=new URL(CREDS.proxy).hostname.replace('.workers.dev',''); }catch(e){}
+    renderList(); renderMain(); renderStats(); updateUndo();
+    showToast(`✦ ${raw.length} produkter lastet – velg hvor mange som skal behandles`,'success');
   } catch(err){
     setLoading(false);
     console.error('fetchAndLoad feil:', err);
     showErrorBanner(err.message);
   }
+}
+
+/* ── BATCH AI GENERATION ────────────────────────── */
+async function generateBatch(){
+  if(S.generating){ showToast('Generering pågår allerede…','warn'); return; }
+  const unprocessed = S.products.filter(p=>!S.processed.has(p.id));
+  if(!unprocessed.length){ showToast('Alle produkter er allerede behandlet','warn'); return; }
+  const batch = unprocessed.slice(0, S.batchSize);
+  S.generating = true;
+  updateBatchUI();
+  setLoading(true,`Genererer AI-forslag for ${batch.length} produkter…`);
+  try {
+    for(let i=0; i<batch.length; i++){
+      const p = batch[i];
+      setLoading(true,`Genererer forslag for "${p.name}" (${i+1}/${batch.length})…`);
+      const suggestions = await generateSuggestions(p.name, p.fields.description.current, p.fields.shortDescription.current, p.brand, p.fields.altTexts);
+      // Inject suggestions into product
+      p.fields.description.suggested      = suggestions.description;
+      p.fields.shortDescription.suggested = suggestions.shortDescription;
+      p.fields.yoast.suggestedTitle       = suggestions.yoastTitle;
+      p.fields.yoast.suggestedMeta        = suggestions.yoastMeta;
+      p.fields.keyphrase.suggested        = suggestions.focusKeyphrase;
+      p.fields.synonyms.suggested         = suggestions.keyphraseSynonyms;
+      p.fields.tags.suggested             = suggestions.tags;
+      p.fields.altTexts.forEach((img,idx)=>{
+        img.suggested      = suggestions.altTexts[idx]   || '';
+        img.suggestedTitle = suggestions.imageTitles[idx] || '';
+      });
+      S.processed.add(p.id);
+      S.fieldStates[p.id]={description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending',keyphrase:'pending',synonyms:'pending',tags:'pending'};
+      renderList();
+    }
+    setLoading(false);
+    S.generating=false;
+    updateBatchUI();
+    renderMain(); renderStats();
+    showToast(`✦ ${batch.length} produkter klare for gjennomgang`,'success');
+    // Auto-select first in batch if nothing selected
+    if(!S.activeId || !S.processed.has(S.activeId)){
+      selectProduct(batch[0].id);
+    }
+  } catch(err){
+    setLoading(false);
+    S.generating=false;
+    updateBatchUI();
+    showErrorBanner(err.message);
+  }
+}
+
+function updateBatchUI(){
+  const btn = document.getElementById('generate-btn');
+  if(!btn) return;
+  const unprocessed = S.products.filter(p=>!S.processed.has(p.id)).length;
+  btn.disabled = S.generating || unprocessed===0;
+  btn.style.opacity = (S.generating || unprocessed===0) ? '.4' : '1';
+  btn.textContent = S.generating ? '⏳ Genererer…' : `✦ Generer forslag for neste ${Math.min(S.batchSize,unprocessed)} produkter`;
+  renderBatchProgress();
+}
+
+function setBatchSize(n, el){
+  S.batchSize=n;
+  document.querySelectorAll('.batch-size-btn').forEach(b=>{
+    b.style.background='var(--bg)'; b.style.color='var(--text)'; b.style.borderColor='var(--border)';
+  });
+  el.style.background='var(--accent)'; el.style.color='#fff'; el.style.borderColor='var(--accent)';
+  updateBatchUI();
+}
+
+function renderBatchProgress(){
+  const el = document.getElementById('batch-progress');
+  if(!el) return;
+  const total = S.products.length;
+  const done  = S.processed.size;
+  const pct   = total ? Math.round(done/total*100) : 0;
+  el.textContent = total ? `${done} av ${total} produkter behandlet (${pct}%)` : '';
+}
+
+/* ── MAP RAW WOO (no AI) ────────────────────────── */
+function mapRaw(woo){
+  const yoastMeta    = woo.meta_data || [];
+  const currentYTitle = yoastMeta.find(m=>m.key==='_yoast_wpseo_title')?.value || '';
+  const currentYMeta  = yoastMeta.find(m=>m.key==='_yoast_wpseo_metadesc')?.value || '';
+  const currentFocus  = yoastMeta.find(m=>m.key==='_yoast_wpseo_focuskw')?.value || '';
+  const images = (woo.images||[]).slice(0,3).map(img=>({
+    img:'🖼️', filename:img.src?.split('/').pop()||'',
+    currentTitle:img.name||'', suggestedTitle:'',
+    current:img.alt||'', suggested:''
+  }));
+  const cats  = (woo.categories||[]).map(c=>c.name).join(' ');
+  const tags  = (woo.tags||[]).map(t=>t.name).join(' ');
+  const brand = detectBrand(cats+' '+tags, woo.name) || woo.categories?.[0]?.name || '';
+  return {
+    id: woo.id, name: woo.name,
+    sku: woo.sku || `WOO-${woo.id}`,
+    icon: guessIcon(woo.name), brand,
+    fields:{
+      description:      {current:woo.description||'',      suggested:''},
+      shortDescription: {current:woo.short_description||'', suggested:''},
+      yoast:            {currentTitle:currentYTitle, currentMeta:currentYMeta, suggestedTitle:'', suggestedMeta:''},
+      altTexts:         images,
+      keyphrase:        {current:currentFocus, suggested:''},
+      synonyms:         {current:'', suggested:''},
+      tags:             {current:(woo.tags||[]).map(t=>t.name).join(', '), suggested:''},
+    }
+  };
 }
 
 /* ── WOOCOMMERCE FETCH ──────────────────────────── */
@@ -753,19 +867,16 @@ function disconnect(){$hide('app');$show('config-overlay');S.activeId=null;}
 function renderList(){
   const q=(document.getElementById('search-input').value||'').toLowerCase();
   const ul=document.getElementById('product-list');ul.innerHTML='';
-  const vis=S.products.filter(p=>{
-    if(q&&!p.name.toLowerCase().includes(q)&&!p.sku.toLowerCase().includes(q))return false;
-    const st=pStatus(p.id);
-    if(S.filter==='pending'&&st==='done')return false;
-    if(S.filter==='done'&&st!=='done')return false;
-    return true;
-  });
+  const vis=S.products.filter(filterProduct);
   vis.forEach(p=>{
     const st=pStatus(p.id);
     const bc=(BRANDS[p.brand]||{}).color||'transparent';
     const fs=S.fieldStates[p.id]||{};
     const app=Object.values(fs).filter(v=>v==='approved').length;
     const tot=Object.keys(fs).length;
+    const badgeHtml = st==='unprocessed'
+      ? `<span class="badge" style="background:var(--border);color:var(--muted)">Ikke behandlet</span>`
+      : `<span class="badge ${st==='done'?'done':'pending'}">${st==='done'?'Ferdig':'Venter'}</span>`;
     const li=document.createElement('li');
     li.className='product-item'+(S.activeId===p.id?' active':'');
     li.style.setProperty('--brand-color',bc);
@@ -774,9 +885,9 @@ function renderList(){
       <div class="product-info">
         <div class="product-name">${p.name}</div>
         <div class="product-sku">${p.sku}</div>
-        <div class="product-progress"><div class="product-progress-fill" style="width:${tot?app/tot*100:0}%"></div></div>
+        <div class="product-progress"><div class="product-progress-fill" style="width:${tot&&st!=='unprocessed'?app/tot*100:0}%"></div></div>
       </div>
-      <span class="badge ${st==='done'?'done':'pending'}">${st==='done'?'Ferdig':'Venter'}</span>`;
+      ${badgeHtml}`;
     ul.appendChild(li);
   });
   document.getElementById('sb-count').textContent=`${vis.length} produkt${vis.length!==1?'er':''}`;
@@ -786,13 +897,39 @@ function renderList(){
   document.getElementById('sb-time').textContent=sec>0?fmtTime(sec):'';
 }
 function setFilter(m,el){S.filter=m;document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');renderList();}
-function pStatus(pid){const fs=S.fieldStates[pid]||{};return Object.values(fs).every(v=>v==='approved'||v==='skipped')?'done':'pending';}
+
+function filterProduct(p){
+  const q=(document.getElementById('search-input').value||'').toLowerCase();
+  if(q&&!p.name.toLowerCase().includes(q)&&!p.sku.toLowerCase().includes(q))return false;
+  const st=pStatus(p.id);
+  if(S.filter==='unprocessed'&&st!=='unprocessed')return false;
+  if(S.filter==='pending'&&st!=='pending')return false;
+  if(S.filter==='done'&&st!=='done')return false;
+  return true;
+}
+function pStatus(pid){
+  if(!S.processed.has(pid)) return 'unprocessed';
+  const fs=S.fieldStates[pid]||{};
+  return Object.values(fs).every(v=>v==='approved'||v==='skipped')?'done':'pending';
+}
 
 /* ── SELECT / RENDER ────────────────────────────── */
 function selectProduct(id){S.activeId=id;renderList();renderMain();}
 
 function renderMain(){
-  const p=S.products.find(x=>x.id===S.activeId);if(!p)return;
+  const main=document.getElementById('main-panel');
+  if(!S.activeId){ main.innerHTML=document.getElementById('empty-state').outerHTML; updateBatchUI(); return; }
+  const p=S.products.find(x=>x.id===S.activeId);
+  if(!p) return;
+  if(!S.processed.has(p.id)){
+    main.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:14px;text-align:center;padding:40px">
+      <div style="font-size:32px;opacity:.3">⏳</div>
+      <div style="font-family:var(--font-hd);font-size:20px;opacity:.5">${p.name}</div>
+      <div style="font-size:13px;color:var(--muted);max-width:260px">Dette produktet er ikke behandlet ennå. Gå tilbake og generer AI-forslag.</div>
+      <button onclick="S.activeId=null;renderMain()" style="margin-top:8px;padding:8px 18px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:var(--font-ui);font-size:13px;cursor:pointer">← Tilbake</button>
+    </div>`;
+    return;
+  }
   const fs=S.fieldStates[p.id]||{};
   const app=Object.values(fs).filter(v=>v==='approved').length;
   const tot=Object.keys(fs).length;

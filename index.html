@@ -39,6 +39,7 @@ body{font-family:var(--font-ui);background:var(--bg);color:var(--text);font-size
 @keyframes checkPop{0%{transform:scale(0.5);opacity:0}60%{transform:scale(1.2)}100%{transform:scale(1);opacity:1}}
 @keyframes flashGreen{0%,100%{background:var(--add-bg)}50%{background:#bfead0}}
 @keyframes pulseWarn{0%,100%{opacity:1}50%{opacity:.6}}
+@keyframes spin{to{transform:rotate(360deg)}}
 
 /* CONFIG */
 #config-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:1000;animation:fadeIn .3s ease}
@@ -387,9 +388,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
         <p style="margin-bottom:20px">Velg hvor mange produkter AI skal behandle om gangen, og trykk generer.</p>
         <div id="batch-control" style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;width:340px;text-align:left;box-shadow:var(--shadow)">
           <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Antall produkter per batch</div>
-          <div style="display:flex;gap:7px;margin-bottom:16px;flex-wrap:wrap">
-            ${[5,10,25,50].map(n=>`<button onclick="setBatchSize(${n},this)" class="batch-size-btn ${n===10?'active':''}" style="padding:7px 16px;border-radius:8px;font-family:var(--font-ui);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;border:1px solid var(--border);background:${n===10?'var(--accent)':'var(--bg)'};color:${n===10?'#fff':'var(--text)'}">${n}</button>`).join('')}
-          </div>
+          <div id="batch-size-wrap" style="display:flex;gap:7px;margin-bottom:16px;flex-wrap:wrap"></div>
           <button id="generate-btn" onclick="generateBatch()" style="width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-family:var(--font-ui);font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s">
             ✦ Generer forslag for neste 10 produkter
           </button>
@@ -447,7 +446,11 @@ const FKEYS = ['description','shortDescription','yoast','altTexts','keyphrase','
 /* ── DEMO DATA ─────────────────────────────────── */
 const DEMO = [
   {id:101,name:'Ami sofa',sku:'MUUTO-AMISOFA-3S',icon:'🛋️',brand:'Muuto',fields:{
-    description:{current:`<p>Ami sofa er en sofamodell fra Muuto.</p><p>Sofaen er behagelig og passer i stuen.</p><ul><li>Bredde: 220 cm</li><li>Dybde: 85 cm</li><li>Høyde: 72 cm</li></ul>`,suggested:`<p>Ami sofa fra Muuto er en moderne og omfavnende sofa designet av TAF Studio. Med sitt karakteristiske bue-formede ryggsystem og myke proporsjoner inviterer den til lange timer i sofaen. Sofaen er like komfortabel som den er vakker, med et samlet uttrykk som fungerer i både moderne og mer klassiske interiører.</p>\n<p>Konstruksjonen er bygd opp rundt et solid treramme-system, og de løse putene gjør den enkel å holde ren og vedlikeholde. Tilgjengelig i et bredt utvalg av tekstiler og farger fra Muutos kolleksjon.</p>\n<ul>\n<li>Bredde: 220 cm</li><li>Dybde: 85 cm</li><li>Sittehøyde: 42 cm</li><li>Totalhøyde: 72 cm</li><li>Vekt: 58 kg</li><li>Ramme: Massivt tre</li>\n</ul>`},
+    description:{current:`<p>Ami sofa er en sofamodell fra Muuto.</p><p>Sofaen er behagelig og passer i stuen.</p><ul><li>Bredde: 220 cm</li><li>Dybde: 85 cm</li><li>Høyde: 72 cm</li></ul>`,suggested:`<p>Ami sofa fra Muuto er en moderne og omfavnende sofa designet av TAF Studio. Med sitt karakteristiske bue-formede ryggsystem og myke proporsjoner inviterer den til lange timer i sofaen. Sofaen er like komfortabel som den er vakker, med et samlet uttrykk som fungerer i både moderne og mer klassiske interiører.</p>
+<p>Konstruksjonen er bygd opp rundt et solid treramme-system, og de løse putene gjør den enkel å holde ren og vedlikeholde. Tilgjengelig i et bredt utvalg av tekstiler og farger fra Muutos kolleksjon.</p>
+<ul>
+<li>Bredde: 220 cm</li><li>Dybde: 85 cm</li><li>Sittehøyde: 42 cm</li><li>Totalhøyde: 72 cm</li><li>Vekt: 58 kg</li><li>Ramme: Massivt tre</li>
+</ul>`},
     shortDescription:{current:'Ami sofa fra Muuto. Laget av TAF Studio. Fås i mange farger og tekstiler.',suggested:'Ami sofa by TAF Studio for Muuto – a enveloping 3-seater with curved back and loose cushions. Available in a wide range of fabrics.'},
     yoast:{currentTitle:'Ami sofa | Muuto',currentMeta:'Kjøp Ami sofa fra Muuto.',suggestedTitle:'Ami Sofa | Muuto',suggestedMeta:'Ami sofa by TAF Studio for Muuto. Enveloping 3-seater with curved back and loose cushions. Fast delivery and easy returns.'},
     altTexts:[
@@ -460,7 +463,11 @@ const DEMO = [
     tags:{current:'',suggested:'skandinavisk, tekstil, stue, minimalistisk'}
   }},
   {id:102,name:'Catch stol',sku:'HAY-CATCH-GRN',icon:'🪑',brand:'HAY',fields:{
-    description:{current:`<p>Catch stol er en stol fra HAY.</p>`,suggested:`<p>Catch stol fra HAY er formgitt av Jaime Hayon og kjennetegnes av sine myke, skulpturelle former. Den høye ryggen omfavner brukeren og gir en følelse av privatliv og ro, uten at stolen mister sitt lette og elegante uttrykk. Catch er like naturlig i stuen som på kontoret.</p>\n<p>Stolen er polstret i sin helhet og leveres med ben i lakert eik, sort-farget eik eller krom. Stofftrekket kan velges fra HAYs brede tekstilkolleksjon.</p>\n<ul>\n<li>Bredde: 61 cm</li><li>Dybde: 68 cm</li><li>Totalhøyde: 107 cm</li><li>Sittehøyde: 41 cm</li><li>Vekt: 14 kg</li>\n</ul>`},
+    description:{current:`<p>Catch stol er en stol fra HAY.</p>`,suggested:`<p>Catch stol fra HAY er formgitt av Jaime Hayon og kjennetegnes av sine myke, skulpturelle former. Den høye ryggen omfavner brukeren og gir en følelse av privatliv og ro, uten at stolen mister sitt lette og elegante uttrykk. Catch er like naturlig i stuen som på kontoret.</p>
+<p>Stolen er polstret i sin helhet og leveres med ben i lakert eik, sort-farget eik eller krom. Stofftrekket kan velges fra HAYs brede tekstilkolleksjon.</p>
+<ul>
+<li>Bredde: 61 cm</li><li>Dybde: 68 cm</li><li>Totalhøyde: 107 cm</li><li>Sittehøyde: 41 cm</li><li>Vekt: 14 kg</li>
+</ul>`},
     shortDescription:{current:'Catch stol fra HAY.',suggested:'Catch chair by Jaime Hayon for HAY – sculptural fully upholstered lounge chair with high back. Available with oak or chrome legs.'},
     yoast:{currentTitle:'Catch stol',currentMeta:'',suggestedTitle:'Catch Chair | HAY',suggestedMeta:'Catch chair by HAY, designed by Jaime Hayon. Sculptural upholstered chair with high back. Choose your fabric and leg finish.'},
     altTexts:[
@@ -472,7 +479,10 @@ const DEMO = [
     tags:{current:'',suggested:'skandinavisk, tekstil, stue, moderne'}
   }},
   {id:103,name:'Leaf vegglampe',sku:'MUUTO-LEAF-WH',icon:'💡',brand:'Muuto',fields:{
-    description:{current:`<p>Leaf lampe fra Muuto. Vegglampe designet av Henrik Preusche.</p>`,suggested:`<p>Leaf vegglampe fra Muuto er designet av Henrik Preusche og er blitt en av merkets mest ikoniske produkter. Den tynne, bladformede skjermen gir et skulpturelt uttrykk på veggen og kan justeres til ønsket vinkel for å styre lyset. Leaf er en utmerket leselampe ved sengen eller sofaen.</p>\n<ul>\n<li>Høyde: 32 cm</li><li>Bredde: 11 cm</li><li>Lyskilde: E27, maks 10W LED</li><li>Vekt: 0.6 kg</li>\n</ul>`},
+    description:{current:`<p>Leaf lampe fra Muuto. Vegglampe designet av Henrik Preusche.</p>`,suggested:`<p>Leaf vegglampe fra Muuto er designet av Henrik Preusche og er blitt en av merkets mest ikoniske produkter. Den tynne, bladformede skjermen gir et skulpturelt uttrykk på veggen og kan justeres til ønsket vinkel for å styre lyset. Leaf er en utmerket leselampe ved sengen eller sofaen.</p>
+<ul>
+<li>Høyde: 32 cm</li><li>Bredde: 11 cm</li><li>Lyskilde: E27, maks 10W LED</li><li>Vekt: 0.6 kg</li>
+</ul>`},
     shortDescription:{current:'Leaf vegglampe fra Muuto av Henrik Preusche.',suggested:'Leaf wall lamp by Henrik Preusche for Muuto – adjustable blade-shaped wall light. Perfect as a reading lamp by the bed or sofa.'},
     yoast:{currentTitle:'Leaf lampe – Muuto',currentMeta:'Kjøp Leaf vegglampe fra Muuto.',suggestedTitle:'Leaf Wall Lamp | Muuto',suggestedMeta:'Leaf wall lamp by Muuto, designed by Henrik Preusche. Blade-shaped and adjustable – the perfect reading light for bed or sofa.'},
     altTexts:[
@@ -484,7 +494,11 @@ const DEMO = [
     tags:{current:'',suggested:'skandinavisk, minimalistisk, metall, soverom, stue'}
   }},
   {id:104,name:'Fjord bord',sku:'NORMANN-FJORD-OAK',icon:'🪵',brand:'Normann Copenhagen',fields:{
-    description:{current:`<p>Fjord bord er et spisebord fra Normann Copenhagen.</p>`,suggested:`<p>Fjord spisebord fra Normann Copenhagen er tegnet av Simon Legald og kombinerer rene skandinaviske linjer med solid håndverk. Bordet har en tydelig karakter gjennom de elegante understøttene som danner en enhetlig form fra bordplate til gulv.</p>\n<p>Bordplaten fås i heltre eik eller hvitlakkert MDF, og understillingen leveres i lakkert stål. Fjord passer like godt i en romslig stue som i et dedikert spisekammer.</p>\n<ul>\n<li>Lengde: 210 cm</li><li>Bredde: 100 cm</li><li>Høyde: 73 cm</li><li>Vekt: 62 kg</li><li>Materiale topp: Massiv eik</li><li>Understell: Pulverlakkert stål</li>\n</ul>`},
+    description:{current:`<p>Fjord bord er et spisebord fra Normann Copenhagen.</p>`,suggested:`<p>Fjord spisebord fra Normann Copenhagen er tegnet av Simon Legald og kombinerer rene skandinaviske linjer med solid håndverk. Bordet har en tydelig karakter gjennom de elegante understøttene som danner en enhetlig form fra bordplate til gulv.</p>
+<p>Bordplaten fås i heltre eik eller hvitlakkert MDF, og understillingen leveres i lakkert stål. Fjord passer like godt i en romslig stue som i et dedikert spisekammer.</p>
+<ul>
+<li>Lengde: 210 cm</li><li>Bredde: 100 cm</li><li>Høyde: 73 cm</li><li>Vekt: 62 kg</li><li>Materiale topp: Massiv eik</li><li>Understell: Pulverlakkert stål</li>
+</ul>`},
     shortDescription:{current:'Fjord bord fra Normann Copenhagen av Simon Legald.',suggested:'Fjord dining table by Simon Legald for Normann Copenhagen – oval format with sculptural steel base and solid oak tabletop.'},
     yoast:{currentTitle:'Fjord bord – Normann Copenhagen',currentMeta:'',suggestedTitle:'Fjord Dining Table | Normann Copenhagen',suggestedMeta:'Fjord dining table by Normann Copenhagen. Oval design by Simon Legald with powder-coated steel base and solid oak tabletop.'},
     altTexts:[
@@ -501,24 +515,33 @@ const DEMO = [
 const S={products:[],activeId:null,fieldStates:{},undoStack:[],changelog:[],openFields:{},darkMode:false,statsOpen:false,filter:'all',approvalTimes:[],pendingBatch:null,processed:new Set(),batchSize:10,generating:false};
 
 /* ── INIT ──────────────────────────────────────── */
+function initBatchSizeButtons(){
+  const wrap=document.getElementById('batch-size-wrap');
+  if(!wrap) return;
+  wrap.innerHTML=[5,10,25,50].map(n=>`<button onclick="setBatchSize(${n},this)" class="batch-size-btn ${n===S.batchSize?'active':''}" style="padding:7px 16px;border-radius:8px;font-family:var(--font-ui);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;border:1px solid var(--border);background:${n===S.batchSize?'var(--accent)':'var(--bg)'};color:${n===S.batchSize?'#fff':'var(--text)'}">${n}</button>`).join('');
+}
+
 function loadDemo(){
   S.products=JSON.parse(JSON.stringify(DEMO));
   S.products.forEach(p=>{
     S.fieldStates[p.id]={description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending',keyphrase:'pending',synonyms:'pending',tags:'pending'};
     S.openFields[p.id]={};
+    S.processed.add(p.id);
   });
   loadFromStorage();
   $hide('config-overlay');$show('app');
   setLoading(false);
   document.getElementById('site-label').textContent='Demo-modus';
-  renderList();renderStats();updateUndo();updateBatchUI();
+  renderList();renderStats();updateUndo();updateBatchUI();renderMain();
   showToast('✦ Demo lastet – 4 produkter klare','success');
 }
+
 /* ── PASSWORD ───────────────────────────────────── */
 function checkPassword(){
-  const val = document.getElementById('pw-input').value;
+  const val = document.getElementById('pw-input').value.trim();
   const err = document.getElementById('pw-error');
   if(val === 'Novooi26'){
+    err.style.display='none';
     document.getElementById('password-overlay').style.display='none';
     $show('config-overlay');
   } else {
@@ -546,7 +569,6 @@ async function fetchAndLoad(){
     const raw = await fetchWooProducts();
     if(!raw.length){ setLoading(false); showToast('Ingen produkter funnet','warn'); return; }
 
-    // Map raw WooCommerce data without generating AI yet
     S.products=[]; S.fieldStates={}; S.openFields={}; S.processed=new Set();
     for(const p of raw){
       const mapped = mapRaw(p);
@@ -580,7 +602,6 @@ async function generateBatch(){
       const p = batch[i];
       setLoading(true,`Genererer forslag for "${p.name}" (${i+1}/${batch.length})…`);
       const suggestions = await generateSuggestions(p.name, p.fields.description.current, p.fields.shortDescription.current, p.brand, p.fields.altTexts);
-      // Inject suggestions into product
       p.fields.description.suggested      = suggestions.description;
       p.fields.shortDescription.suggested = suggestions.shortDescription;
       p.fields.yoast.suggestedTitle       = suggestions.yoastTitle;
@@ -601,7 +622,6 @@ async function generateBatch(){
     updateBatchUI();
     renderMain(); renderStats();
     showToast(`✦ ${batch.length} produkter klare for gjennomgang`,'success');
-    // Auto-select first in batch if nothing selected
     if(!S.activeId || !S.processed.has(S.activeId)){
       selectProduct(batch[0].id);
     }
@@ -621,6 +641,7 @@ function updateBatchUI(){
   btn.style.opacity = (S.generating || unprocessed===0) ? '.4' : '1';
   btn.textContent = S.generating ? '⏳ Genererer…' : `✦ Generer forslag for neste ${Math.min(S.batchSize,unprocessed)} produkter`;
   renderBatchProgress();
+  initBatchSizeButtons();
 }
 
 function setBatchSize(n, el){
@@ -628,7 +649,9 @@ function setBatchSize(n, el){
   document.querySelectorAll('.batch-size-btn').forEach(b=>{
     b.style.background='var(--bg)'; b.style.color='var(--text)'; b.style.borderColor='var(--border)';
   });
-  el.style.background='var(--accent)'; el.style.color='#fff'; el.style.borderColor='var(--accent)';
+  if(el){
+    el.style.background='var(--accent)'; el.style.color='#fff'; el.style.borderColor='var(--accent)';
+  }
   updateBatchUI();
 }
 
@@ -700,14 +723,12 @@ function guessIcon(name){
 }
 
 async function mapAndGenerate(woo){
-  // Extract existing content
   const currentDesc  = woo.description  || '';
   const currentShort = woo.short_description || '';
   const yoastMeta    = woo.meta_data || [];
   const currentYTitle = yoastMeta.find(m=>m.key==='_yoast_wpseo_title')?.value || '';
   const currentYMeta  = yoastMeta.find(m=>m.key==='_yoast_wpseo_metadesc')?.value || '';
 
-  // Extract images
   const images = (woo.images||[]).slice(0,3).map(img=>({
     img:'🖼️',
     filename: img.src?.split('/').pop() || '',
@@ -717,13 +738,11 @@ async function mapAndGenerate(woo){
     suggested: ''
   }));
 
-  // Detect brand from categories/tags/name
   const cats = (woo.categories||[]).map(c=>c.name).join(' ');
   const tags = (woo.tags||[]).map(t=>t.name).join(' ');
   const brandHint = cats + ' ' + tags;
   const brand = detectBrand(brandHint, woo.name) || woo.categories?.[0]?.name || 'Ukjent';
 
-  // Generate AI suggestions
   const suggestions = await generateSuggestions(woo.name, currentDesc, currentShort, brand, images);
 
   return {
@@ -806,17 +825,17 @@ Generer følgende og svar KUN med gyldig JSON (ingen markdown, ingen forklaring)
     return {
       description:        parsed.description        || '',
       shortDescription:   parsed.shortDescription   || '',
-      yoastTitle:         parsed.yoastTitle          || '',
-      yoastMeta:          parsed.yoastMeta           || '',
-      focusKeyphrase:     parsed.focusKeyphrase      || name,
-      keyphraseSynonyms:  parsed.keyphraseSynonyms   || '',
-      tags:               parsed.tags                || '',
-      altTexts:           parsed.altTexts            || ['','',''],
-      imageTitles:        parsed.imageTitles         || ['','',''],
+      yoastTitle:         parsed.yoastTitle         || '',
+      yoastMeta:          parsed.yoastMeta          || '',
+      focusKeyphrase:     parsed.focusKeyphrase     || name,
+      keyphraseSynonyms:  parsed.keyphraseSynonyms  || '',
+      tags:               parsed.tags               || '',
+      altTexts:           parsed.altTexts           || ['','',''],
+      imageTitles:        parsed.imageTitles        || ['','',''],
     };
   } catch(e){
     console.warn('JSON parse failed for', name, text);
-    return { description:'', shortDescription:'', yoastTitle:'', yoastMeta:'', altTexts:['','',''], imageTitles:['','',''] };
+    return { description:'', shortDescription:'', yoastTitle:'', yoastMeta:'', focusKeyphrase:name, keyphraseSynonyms:'', tags:'', altTexts:['','',''], imageTitles:['','',''] };
   }
 }
 
@@ -861,11 +880,10 @@ function showErrorBanner(msg){
       </details>
     </div>`;
 }
-function disconnect(){$hide('app');$show('config-overlay');S.activeId=null;}
+function disconnect(){$hide('app');$show('config-overlay');S.activeId=null;renderMain();}
 
 /* ── PRODUCT LIST ───────────────────────────────── */
 function renderList(){
-  const q=(document.getElementById('search-input').value||'').toLowerCase();
   const ul=document.getElementById('product-list');ul.innerHTML='';
   const vis=S.products.filter(filterProduct);
   vis.forEach(p=>{
@@ -899,7 +917,7 @@ function renderList(){
 function setFilter(m,el){S.filter=m;document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');renderList();}
 
 function filterProduct(p){
-  const q=(document.getElementById('search-input').value||'').toLowerCase();
+  const q=(document.getElementById('search-input')?.value||'').toLowerCase();
   if(q&&!p.name.toLowerCase().includes(q)&&!p.sku.toLowerCase().includes(q))return false;
   const st=pStatus(p.id);
   if(S.filter==='unprocessed'&&st!=='unprocessed')return false;
@@ -918,9 +936,17 @@ function selectProduct(id){S.activeId=id;renderList();renderMain();}
 
 function renderMain(){
   const main=document.getElementById('main-panel');
-  if(!S.activeId){ main.innerHTML=document.getElementById('empty-state').outerHTML; updateBatchUI(); return; }
+
+  if(!S.activeId){
+    const empty = document.getElementById('empty-state');
+    main.innerHTML = empty ? empty.outerHTML : '';
+    updateBatchUI();
+    return;
+  }
+
   const p=S.products.find(x=>x.id===S.activeId);
   if(!p) return;
+
   if(!S.processed.has(p.id)){
     main.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:14px;text-align:center;padding:40px">
       <div style="font-size:32px;opacity:.3">⏳</div>
@@ -930,6 +956,7 @@ function renderMain(){
     </div>`;
     return;
   }
+
   const fs=S.fieldStates[p.id]||{};
   const app=Object.values(fs).filter(v=>v==='approved').length;
   const tot=Object.keys(fs).length;
@@ -938,7 +965,7 @@ function renderMain(){
   const pendF=Object.values(fs).filter(v=>v==='pending').length;
   const avg=S.approvalTimes.length?S.approvalTimes.reduce((a,b)=>a+b,0)/S.approvalTimes.length:40000;
   const est=Math.round(pendF*avg/1000);
-  const main=document.getElementById('main-panel');
+
   main.innerHTML=`
     ${warnings.length?`<div class="missing-banner"><span class="wi">⚠</span><div><strong>Mangler i nåværende data:</strong><ul>${warnings.map(w=>`<li>• ${w}</li>`).join('')}</ul></div></div>`:''}
     <div class="product-header-bar">
@@ -966,6 +993,7 @@ function renderMain(){
       <button class="btn-dryrun" onclick="previewCSV()">Forhåndsvis CSV</button>
       <button class="btn-publish" ${app>0?'':'disabled'} onclick="exportProductCSV(${p.id})">⬇ Eksporter CSV</button>
     </div>`;
+
   const of=S.openFields[p.id]||{};
   Object.entries(of).forEach(([k,v])=>{if(v)openField(k);});
   if(!Object.values(of).some(Boolean)){
@@ -1076,7 +1104,7 @@ function buildDesc(p){
     <div class="content-panel" id="dc-edit">
       <div class="edit-split">
         <div><div class="split-lbl">AI-forslag (referanse)</div><div class="text-display" style="font-size:12.5px;max-height:200px;overflow-y:auto">${f.suggested}</div></div>
-        <div><div class="split-lbl">Din versjon</div><textarea class="edit-area" id="edit-desc">${escA(stripHtml(f.suggested))}</textarea></div>
+        <div><div class="split-lbl">Din versjon</div><textarea class="edit-area" id="edit-desc">${stripHtml(f.suggested)}</textarea></div>
       </div>
     </div>
   </div>
@@ -1263,7 +1291,6 @@ function closeBatch(){$hide('batch-modal');}
 
 /* ── CSV EXPORT ─────────────────────────────────── */
 function buildCSVRows(products) {
-  // WP All Import compatible columns
   const headers = [
     'sku','product_name',
     'description','short_description',
@@ -1315,7 +1342,7 @@ function generateCSVString(productIds) {
 }
 
 function downloadCSV(content, filename) {
-  const bom = '\uFEFF'; // UTF-8 BOM for Excel
+  const bom = '\uFEFF';
   const blob = new Blob([bom + content], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1356,7 +1383,6 @@ function previewCSV() {
   const { headers, rows } = buildCSVRows([p]);
   const row = rows[0];
 
-  // Show modal with column preview
   document.getElementById('batch-title').textContent = 'CSV-forhåndsvisning';
   document.getElementById('batch-desc').innerHTML = `
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Godkjente felt: <strong>${approved.join(', ')}</strong></div>
@@ -1520,7 +1546,13 @@ document.addEventListener('keydown',e=>{
   if(e.key==='s'||e.key==='S'){e.preventDefault();const k=getActiveField();if(k)skipField(k);}
 });
 function getActiveField(){const fs=S.fieldStates[S.activeId]||{};return FKEYS.find(k=>fs[k]==='pending');}
-function navProduct(dir){const vis=S.products;if(!vis.length)return;const idx=vis.findIndex(p=>p.id===S.activeId);const next=vis[(idx+dir+vis.length)%vis.length];if(next)selectProduct(next.id);}
+function navProduct(dir){
+  const vis=S.products.filter(filterProduct);
+  if(!vis.length)return;
+  const idx=vis.findIndex(p=>p.id===S.activeId);
+  const next=vis[(idx+dir+vis.length)%vis.length];
+  if(next)selectProduct(next.id);
+}
 function showKb(){$show('kb-overlay');}function hideKb(){$hide('kb-overlay');}
 
 /* ── STORAGE ────────────────────────────────────── */
@@ -1534,16 +1566,27 @@ function loadFromStorage(){try{
 }catch(e){}}
 
 /* ── TOAST ─────────────────────────────────────── */
-function showToast(msg,type){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast ${type||''}`;clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.add('hidden'),3500);}
+function showToast(msg,type){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.className=`toast ${type||''}`;
+  t.classList.remove('hidden');
+  clearTimeout(window._tt);
+  window._tt=setTimeout(()=>t.classList.add('hidden'),3500);
+}
 
 /* ── HELPERS ────────────────────────────────────── */
 function $show(id){const e=document.getElementById(id);e&&e.classList.remove('hidden');}
 function $hide(id){const e=document.getElementById(id);e&&e.classList.add('hidden');}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-function escA(s){return String(s).replace(/"/g,'&quot;');}
 function stripHtml(h){return(h||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();}
 function now(){return new Date().toLocaleTimeString('no-NO',{hour:'2-digit',minute:'2-digit'});}
 function fmtTime(sec){if(sec<60)return`${sec} sek`;const m=Math.floor(sec/60),s=sec%60;if(m<60)return s>0?`${m}m ${s}s`:`${m} min`;return`${Math.floor(m/60)}t ${m%60}m`;}
+
+/* ── STARTUP ────────────────────────────────────── */
+initBatchSizeButtons();
+updateBatchUI();
+document.getElementById('pw-input')?.focus();
 </script>
 </body>
 </html>

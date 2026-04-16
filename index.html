@@ -312,20 +312,32 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 </head>
 <body>
 
+<!-- PASSWORD SCREEN -->
+<div id="password-overlay" style="position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:2000">
+  <div class="config-card" style="width:360px">
+    <h1>SEO Optimalisering Agent</h1>
+    <p class="subtitle" style="margin-bottom:24px">Skriv inn passord for å fortsette.</p>
+    <div class="field-group">
+      <label>Passord</label>
+      <input type="password" id="pw-input" placeholder="••••••••" onkeydown="if(event.key==='Enter')checkPassword()">
+    </div>
+    <div id="pw-error" style="font-size:12px;color:var(--del-txt);margin-top:-6px;margin-bottom:10px;display:none">Feil passord – prøv igjen.</div>
+    <button class="btn-primary" onclick="checkPassword()">Logg inn</button>
+  </div>
+</div>
+
 <!-- CONFIG -->
-<div id="config-overlay">
+<div id="config-overlay" class="hidden">
   <div class="config-card">
     <h1>SEO Optimalisering Agent</h1>
-    <p class="subtitle">Kobler til WooCommerce med read-only tilgang og genererer AI-forslag via Claude.</p>
+    <p class="subtitle">Kobler til WooCommerce via Cloudflare Worker og genererer AI-forslag.</p>
     <div class="demo-notice"><span>💡</span><div><strong style="display:block;margin-bottom:2px">Vil du se en demo?</strong>Trykk "Last inn demo" – ingen tilkobling nødvendig.</div></div>
-    <div style="font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">WooCommerce (read-only)</div>
-    <div class="field-group"><label>Nettsted URL</label><input type="url" id="cfg-site" value="https://novooi.com" readonly style="opacity:.6;cursor:not-allowed"></div>
-    <div class="field-group"><label>Consumer Key</label><input type="text" id="cfg-key" placeholder="ck_xxxxxxxxxxxxxxxx"></div>
-    <div class="field-group"><label>Consumer Secret</label><input type="password" id="cfg-secret" placeholder="cs_xxxxxxxxxxxxxxxx"></div>
-    <div style="font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin:14px 0 8px">Anthropic</div>
-    <div class="field-group"><label>Claude API Key</label><input type="password" id="cfg-claude" placeholder="sk-ant-xxxxxxxxxxxxxxxx"></div>
+    <div class="field-group">
+      <label>Worker URL</label>
+      <input type="url" id="cfg-proxy" placeholder="https://seo-img-agent.novooi.workers.dev">
+    </div>
     <div style="font-size:11.5px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:14px;line-height:1.6">
-      🔒 Nøkler lagres kun i nettleseren (sessionStorage) og sendes aldri til en ekstern server. WooCommerce-nøkkelen trenger kun <strong>read</strong>-tilgang.
+      🔒 Alle API-nøkler er lagret i Cloudflare Worker. Agenten skriver aldri direkte til butikken.
     </div>
     <button class="btn-primary" onclick="connectLive()">Koble til</button>
     <button class="btn-demo" onclick="loadDemo()">Last inn demo</button>
@@ -492,17 +504,27 @@ function loadDemo(){
   renderList();renderStats();updateUndo();
   showToast('✦ Demo lastet – 4 produkter klare','success');
 }
+/* ── PASSWORD ───────────────────────────────────── */
+function checkPassword(){
+  const val = document.getElementById('pw-input').value;
+  const err = document.getElementById('pw-error');
+  if(val === 'Novooi26'){
+    document.getElementById('password-overlay').style.display='none';
+    $show('config-overlay');
+  } else {
+    err.style.display='block';
+    document.getElementById('pw-input').value='';
+    document.getElementById('pw-input').focus();
+  }
+}
+
 /* ── CREDENTIALS ────────────────────────────────── */
-const CREDS = { site:'', key:'', secret:'', claude:'' };
+const CREDS = { proxy:'' };
 
 function connectLive(){
-  const site = document.getElementById('cfg-site').value.trim().replace(/\/+$/,'');
-  const key  = document.getElementById('cfg-key').value.trim();
-  const sec  = document.getElementById('cfg-secret').value.trim();
-  const cl   = document.getElementById('cfg-claude').value.trim();
-  if(!site||!key||!sec){showToast('Fyll inn nettsted, Consumer Key og Consumer Secret');return;}
-  if(!cl){showToast('Claude API-nøkkel mangler');return;}
-  CREDS.site=site; CREDS.key=key; CREDS.secret=sec; CREDS.claude=cl;
+  const proxy = document.getElementById('cfg-proxy').value.trim().replace(/\/+$/,'');
+  if(!proxy){showToast('Fyll inn Worker URL');return;}
+  CREDS.proxy = proxy;
   sessionStorage.setItem('seo_creds', JSON.stringify(CREDS));
   fetchAndLoad();
 }
@@ -537,12 +559,14 @@ async function fetchAndLoad(){
 
 /* ── WOOCOMMERCE FETCH ──────────────────────────── */
 async function fetchWooProducts(){
-  const auth = btoa(`${CREDS.key}:${CREDS.secret}`);
   let all = [], page = 1;
   while(true){
-    const url = `${CREDS.site}/wp-json/wc/v3/products?per_page=50&page=${page}&status=publish`;
-    const res = await fetch(url, { headers:{ 'Authorization': `Basic ${auth}` } });
-    if(!res.ok) throw new Error(`WooCommerce API svarte ${res.status} – sjekk nettsted og nøkler`);
+    const url = `${CREDS.proxy}/wc/products?per_page=50&page=${page}&status=publish`;
+    const res = await fetch(url);
+    if(!res.ok){
+      const txt = await res.text().catch(()=>'');
+      throw new Error(`WooCommerce API svarte ${res.status}${txt?' – '+txt.slice(0,120):''}`);
+    }
     const data = await res.json();
     if(!data.length) break;
     all = all.concat(data);
@@ -644,14 +668,9 @@ Generer følgende og svar KUN med gyldig JSON (ingen markdown, ingen forklaring)
   "imageTitles": ["Merkevare Produktnavn – Designer – Front", "Merkevare Produktnavn – Designer – Side", "Merkevare Produktnavn – Designer – Detail"]
 }`;
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch(`${CREDS.proxy}/claude`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': CREDS.claude,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1500,

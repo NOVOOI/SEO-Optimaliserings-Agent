@@ -685,37 +685,50 @@ function mapRaw(woo){
 }
 
 function extractBrand(woo){
-  // 1. Check product attributes for brand/leverandør/produsent
+  // 1. Check Dokan store/vendor meta (common on Novooi)
+  const meta = woo.meta_data || [];
+  for(const m of meta){
+    const k = (m.key||'').toLowerCase();
+    if((k==='_store_name'||k.includes('vendor_name')||k.includes('brand')||k.includes('produsent')||k.includes('leverandor'))&&m.value&&typeof m.value==='string'&&m.value.length>0){
+      return m.value;
+    }
+  }
+  // 2. Check product attributes
   const attrs = woo.attributes || [];
   for(const attr of attrs){
     const n = (attr.name||'').toLowerCase();
     if(n.includes('brand')||n.includes('leverandør')||n.includes('produsent')||n.includes('merkevare')||n.includes('designer')){
       const v = Array.isArray(attr.options) ? attr.options[0] : attr.option;
-      if(v) return v;
+      if(v && !/^\d+$/.test(v)) return v; // skip pure numeric values
     }
   }
-  // 2. Check meta_data for brand keys
-  const meta = woo.meta_data || [];
-  for(const m of meta){
-    const k = (m.key||'').toLowerCase();
-    if((k.includes('brand')||k.includes('vendor')||k.includes('produsent')||k.includes('leverandor'))&&m.value&&typeof m.value==='string'){
-      return m.value;
-    }
-  }
-  // 3. Check tags for known brands (tags are more reliable than categories for brands)
+  // 3. Check categories – look for non-generic category names that match known brands
+  const cats = (woo.categories||[]).map(c=>c.name);
+  const fromCat = detectBrand(cats.join(' '), '');
+  if(fromCat) return fromCat;
+  // 4. Check tags for known brands
   const tagNames = (woo.tags||[]).map(t=>t.name);
   const fromTag = detectBrand(tagNames.join(' '), woo.name);
   if(fromTag) return fromTag;
-  // 4. Extract from SKU prefix (e.g. "INHOUSE-MELBOURNE" → "InHouse", "MUUTO-LEAF" → "Muuto")
+  // 5. Extract from SKU prefix and map common abbreviations
   const sku = woo.sku || '';
-  const skuPrefix = sku.split('-')[0].toLowerCase();
-  if(skuPrefix.length >= 3){
-    // Capitalize properly
-    const skuBrand = skuPrefix.charAt(0).toUpperCase() + skuPrefix.slice(1);
-    if(skuBrand !== 'Woo') return skuBrand;
+  const skuPrefix = sku.split('-')[0].toUpperCase();
+  const skuBrandMap = {
+    'INHOUSE':'InHouse','MUUTO':'Muuto','HAY':'HAY','NORMANN':'Normann Copenhagen',
+    'FRITZ':'Fritz Hansen','FERM':'Ferm Living','GUBI':'Gubi','NORTHERN':'Northern',
+    'FJORD':'Fjordfiesta','NESJE':'Nesje','NUEN':'Nuen','LK':'LK Hjelle',
+    'BOLIA':'Bolia','FOGIA':'Fogia','WOUD':'Woud','HEM':'Hem',
+  };
+  if(skuBrandMap[skuPrefix]) return skuBrandMap[skuPrefix];
+  if(skuPrefix.length >= 3 && !/^\d+$/.test(skuPrefix)){
+    return skuPrefix.charAt(0) + skuPrefix.slice(1).toLowerCase();
   }
-  // 5. Last resort: first category
-  return woo.categories?.[0]?.name || '';
+  // 6. Last resort: first non-generic category
+  const genericCats = ['møbler','belysning','tekstil','dekor','keramikk','gulvtepper','tepper','stoler','bord','lamper','sofaer'];
+  for(const c of cats){
+    if(!genericCats.includes(c.toLowerCase())) return c;
+  }
+  return cats[0] || '';
 }
 
 /* ── WOOCOMMERCE FETCH ──────────────────────────── */
@@ -800,74 +813,104 @@ async function mapAndGenerate(woo){
 }
 
 function detectBrand(hint, name){
-  const known = ['Muuto','HAY','Normann Copenhagen','Fritz Hansen','Menu','Ferm Living','&Tradition','Gubi','Verpan','LK Hjelle','Svensson','Bolia'];
-  for(const b of known) if(hint.toLowerCase().includes(b.toLowerCase())||name.toLowerCase().includes(b.toLowerCase())) return b;
+  const known = [
+    'Muuto','HAY','Normann Copenhagen','Fritz Hansen','Menu','Ferm Living',
+    '&Tradition','Gubi','Verpan','LK Hjelle','Svensson','Bolia',
+    'InHouse','Inhouse','Northern','Fjordfiesta','Nesje','Amokamok',
+    'Fitjar Islands','All Pine Press','Nuen','Jone Myking','Fogia',
+    'Hem','New Works','Audo','Woud','Blomus','House Doctor','Elvang',
+    'Marimekko','Iittala','Orrefors','Georg Jensen','Kähler',
+    'Broste Copenhagen','Lyngby Porcelæn','Buster+Punch',
+  ];
+  for(const b of known)
+    if(hint.toLowerCase().includes(b.toLowerCase())||name.toLowerCase().includes(b.toLowerCase())) return b;
   return null;
 }
 
 /* ── CLAUDE AI GENERATION ───────────────────────── */
 async function generateSuggestions(name, currentDesc, currentShort, brand, images){
   const strippedDesc = currentDesc.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
-  const imgNames = images.map(i=>i.filename).filter(Boolean).join(', ');
 
-  const prompt = `Du er en produkttekst-spesialist for Novooi – norsk premium interiør- og designbutikk.
+  // Strip leading numeric product codes from name (e.g. "1068 Twilight Grønn Teppe" → "Twilight Grønn Teppe")
+  const cleanName = name.replace(/^\d+\s+/, '').trim();
+  const productCode = name !== cleanName ? name.match(/^(\d+)/)?.[1] : null;
 
-Produkt: ${name}
-Merkevare/leverandør (DETTE ER PRODUSENTEN – ikke en kategori): ${brand}
+  // ── Main text fields (no images needed) ──────────
+  const textPrompt = `Du er en produkttekst-spesialist for Novooi – norsk premium interiør- og designbutikk.
+
+Produkt: ${cleanName}${productCode ? ` (produktkode: ${productCode} – dette er IKKE merkevarenavn)` : ''}
+Produsent/merkevare: ${brand}
 Eksisterende beskrivelse: ${strippedDesc || '(ingen)'}
-Bilder: ${imgNames || '(ingen filnavn)'}
 
-VIKTIG: "${brand}" er produsentens/leverandørens navn. Bruk dette nøyaktig i alle felter. IKKE erstatt det med en kategori som "Gulvtepper", "Belysning" osv.
+REGLER:
+- Merkevarenavn er "${brand}" – bruk dette eksakt i alle felter
+- "${productCode||''}" er en produktkode, IKKE et merkevarenavn
+- Ikke bruk kategorinavn (Gulvtepper, Belysning osv.) som merkevare
 
-Generer følgende og svar KUN med gyldig JSON (ingen markdown, ingen forklaring):
+Svar KUN med gyldig JSON:
 {
-  "description": "Norsk HTML-tekst med <p>avsnitt</p> og <ul><li>punktliste med mål/egenskaper</li></ul>. Minst 2 avsnitt à 3-5 setninger. Nøktern og informativ tone.",
-  "shortDescription": "Engelsk SEO-tekst, nøyaktig 120-158 tegn. Format: [Produktnavn] by [designer hvis kjent, ellers merkevare] for [merkevare] – [2-3 nøkkelegenskaper].",
-  "yoastTitle": "Engelsk SEO-tittel, maks 60 tegn. Format: [Produktnavn] | [${brand}]",
-  "yoastMeta": "Engelsk meta-description, 120-158 tegn. Inkluder produktnavn, merkevaren '${brand}' og 1-2 kjøpsargumenter.",
-  "focusKeyphrase": "Norsk focus keyphrase. Produktnavnet + merkevaren slik kunden søker det. Maks 4 ord.",
-  "keyphraseSynonyms": "Kommaseparert liste med 3-5 end-of-funnel søkefraser. Kunder som søker spesifikt etter akkurat dette produktet.",
-  "tags": "Kommaseparert liste med 6-12 tagger. Taggene skal hjelpe en AI-chatbot anbefale produktet basert på kundens naturlige språk (f.eks. 'noe varmt til stuen', 'skandinavisk lampe i tre', 'gave under 1000 kr'). Bruk KUN tagger fra disse kategoriene:\nSTIL: skandinavisk · minimalistisk · industriell · klassisk · moderne · bohemsk · rustikk · japandi · art-deco · wabi-sabi\nMATERIALE: tre · metall · messing · kopper · keramikk · glass · tekstil · lin · bomull · ull · rotting · bambus · marmor · lær · sandstein · kork\nROM: stue · soverom · kjøkken · bad · gang · kontor · utendørs · barnerom · spisestue · entre\nFARGE/TONE: hvit · sort · grå · beige · naturlig · varm · kald · fargerik · nude · brun · blå · grønn · rosa\nPRODUKTEGENSKAP: dimbar · batteridrevet · sammenleggbar · justerbar · håndlaget · bærekraftig · vaskemaskinvennlig · allergivennlig · barnesikker · utendørsvennlig · i-serie\nBRUKSSITUASJON: gave · lesekrok · kontorvennlig · hyggelig · statement-møbel · lettvekt · plass-effektiv · fleksibel\nBRUK kun tagger som er åpenbart riktige. Ikke gjett. Maks 12 tagger totalt.",
-  "altTexts": ["Engelsk alt-tekst for bilde 1", "Engelsk alt-tekst for bilde 2", "Engelsk alt-tekst for bilde 3"],
-  "imageTitles": ["${brand} Produktnavn – vinkel/detalj 1", "${brand} Produktnavn – vinkel/detalj 2", "${brand} Produktnavn – vinkel/detalj 3"]
+  "description": "Norsk HTML-tekst med <p>avsnitt</p> og <ul><li>egenskaper</li></ul>. Minst 2 avsnitt à 3-5 setninger.",
+  "shortDescription": "Engelsk SEO-tekst 120-158 tegn. Format: [${cleanName}] by ${brand} – [nøkkelegenskaper].",
+  "yoastTitle": "Engelsk tittel maks 60 tegn. Format: ${cleanName} | ${brand}",
+  "yoastMeta": "Engelsk meta 120-158 tegn med produktnavn og ${brand}.",
+  "focusKeyphrase": "Norsk søkefrase: produktnavn + ${brand}, maks 4 ord.",
+  "keyphraseSynonyms": "3-5 kommaseparerte end-of-funnel søkefraser.",
+  "tags": "6-12 kommaseparerte tagger fra: STIL(skandinavisk/minimalistisk/industriell/klassisk/moderne/bohemsk/rustikk/japandi), MATERIALE(tre/metall/messing/kopper/keramikk/glass/tekstil/lin/bomull/ull/rotting/marmor/lær/sandstein), ROM(stue/soverom/kjøkken/bad/gang/kontor/utendørs/barnerom/spisestue/entre), FARGE(hvit/sort/grå/beige/naturlig/varm/brun/blå/grønn/rosa), EGENSKAP(dimbar/håndlaget/bærekraftig/vaskemaskinvennlig/allergivennlig/barnesikker/utendørsvennlig), BRUK(gave/lesekrok/hyggelig/statement-møbel/lettvekt/plass-effektiv). Kun åpenbart riktige tagger."
 }`;
 
-  const res = await fetch(`${CREDS.proxy}/claude`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1500,
-      messages: [{ role:'user', content: prompt }]
-    })
+  const textRes = await fetch(`${CREDS.proxy}/claude`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1200, messages:[{role:'user',content:textPrompt}] })
   });
+  if(!textRes.ok){ const e=await textRes.json().catch(()=>({})); throw new Error(`Claude API: ${e.error?.message||textRes.status}`); }
+  const textData = await textRes.json();
+  const textRaw = textData.content?.[0]?.text || '{}';
+  let parsed = {};
+  try { parsed = JSON.parse(textRaw.replace(/```json|```/g,'').trim()); } catch(e){ console.warn('JSON parse failed',name,textRaw); }
 
-  if(!res.ok){
-    const err = await res.json().catch(()=>({}));
-    const errMsg = err.error?.message || err.error?.type || res.status;
-    throw new Error(`Claude API: ${errMsg}`);
+  // ── Alt texts with vision (if image URLs available) ──
+  const imgUrls = images.map(i=>i.src).filter(Boolean);
+  let altTexts = ['','',''], imageTitles = ['','',''];
+
+  if(imgUrls.length > 0){
+    // Build vision message with actual images
+    const visionContent = [
+      ...imgUrls.slice(0,3).map(url=>({ type:'image', source:{ type:'url', url } })),
+      { type:'text', text:`Du ser ${imgUrls.length} produktbilde(r) av "${cleanName}" fra ${brand}.
+
+Beskriv nøyaktig hva som faktisk vises i hvert bilde. Svar KUN med JSON:
+{
+  "altTexts": ["Nøyaktig engelsk beskrivelse av bilde 1", "...bilde 2", "...bilde 3"],
+  "imageTitles": ["${brand} ${cleanName} – [kort bildebeskrivelse]", "...bilde 2", "...bilde 3"]
+}
+Regler: Beskriv kun det du faktisk ser. Ikke finn opp miljøer eller situasjoner som ikke er synlige. Maks 125 tegn per alt-tekst.` }
+    ];
+
+    const altRes = await fetch(`${CREDS.proxy}/claude`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:400, messages:[{role:'user',content:visionContent}] })
+    });
+    if(altRes.ok){
+      const altData = await altRes.json();
+      const altRaw = altData.content?.[0]?.text || '{}';
+      try {
+        const altParsed = JSON.parse(altRaw.replace(/```json|```/g,'').trim());
+        altTexts    = altParsed.altTexts    || altTexts;
+        imageTitles = altParsed.imageTitles || imageTitles;
+      } catch(e){ console.warn('Alt text parse failed', altRaw); }
+    }
   }
 
-  const data = await res.json();
-  const text = data.content?.[0]?.text || '{}';
-  try {
-    const clean = text.replace(/```json|```/g,'').trim();
-    const parsed = JSON.parse(clean);
-    return {
-      description:        parsed.description        || '',
-      shortDescription:   parsed.shortDescription   || '',
-      yoastTitle:         parsed.yoastTitle          || '',
-      yoastMeta:          parsed.yoastMeta           || '',
-      focusKeyphrase:     parsed.focusKeyphrase      || name,
-      keyphraseSynonyms:  parsed.keyphraseSynonyms   || '',
-      tags:               parsed.tags                || '',
-      altTexts:           parsed.altTexts            || ['','',''],
-      imageTitles:        parsed.imageTitles         || ['','',''],
-    };
-  } catch(e){
-    console.warn('JSON parse failed for', name, text);
-    return { description:'', shortDescription:'', yoastTitle:'', yoastMeta:'', altTexts:['','',''], imageTitles:['','',''] };
-  }
+  return {
+    description:       parsed.description       || '',
+    shortDescription:  parsed.shortDescription  || '',
+    yoastTitle:        parsed.yoastTitle         || '',
+    yoastMeta:         parsed.yoastMeta          || '',
+    focusKeyphrase:    parsed.focusKeyphrase      || cleanName,
+    keyphraseSynonyms: parsed.keyphraseSynonyms  || '',
+    tags:              parsed.tags               || '',
+    altTexts, imageTitles,
+  };
 }
 
 function setLoading(on, msg=''){

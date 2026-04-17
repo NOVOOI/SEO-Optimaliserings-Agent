@@ -42,7 +42,7 @@ body{font-family:var(--font-ui);background:var(--bg);color:var(--text);font-size
 
 /* CONFIG */
 #config-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:1000;animation:fadeIn .3s ease}
-#config-overlay.hidden{display:none}
+#config-overlay.hidden{display:none!important}
 .config-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:44px;width:430px;box-shadow:0 8px 40px rgba(0,0,0,.10)}
 .config-card h1{font-family:var(--font-hd);font-size:28px;font-weight:400;margin-bottom:5px}
 .config-card .subtitle{color:var(--muted);margin-bottom:24px;font-size:13px}
@@ -355,6 +355,11 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
     <div class="app-logo">SEO <span>Optimalisering Agent</span></div>
     <div class="header-site"><div class="site-dot"></div><span id="site-label">Demo</span></div>
     <div class="header-sep"></div>
+    <div style="display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px 10px">
+      <span style="font-size:11px;color:var(--muted);white-space:nowrap">Batch:</span>
+      <div id="header-batch-wrap" style="display:flex;gap:4px"></div>
+    </div>
+    <button id="generate-btn-hdr" onclick="generateBatch()" style="padding:6px 13px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:var(--font-ui);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity .15s">✦ Generer</button>
     <button class="h-btn" id="dark-btn" onclick="toggleDark()" title="Bytt tema">☀</button>
     <button class="h-btn undo-btn" id="undo-btn" onclick="undo()" disabled>↩ Angre</button>
     <button class="h-btn" id="stats-btn" onclick="toggleStats()">📊 Oversikt</button>
@@ -384,17 +389,11 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
       <div class="empty-state" id="empty-state">
         <div class="icon">✦</div>
         <h2>Klar til bruk</h2>
-        <p style="margin-bottom:20px">Velg hvor mange produkter AI skal behandle om gangen, og trykk generer.</p>
-        <div id="batch-control" style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;width:340px;text-align:left;box-shadow:var(--shadow)">
-          <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Antall produkter per batch</div>
-          <div style="display:flex;gap:7px;margin-bottom:16px;flex-wrap:wrap">
-            ${[5,10,25,50].map(n=>`<button onclick="setBatchSize(${n},this)" class="batch-size-btn ${n===10?'active':''}" style="padding:7px 16px;border-radius:8px;font-family:var(--font-ui);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;border:1px solid var(--border);background:${n===10?'var(--accent)':'var(--bg)'};color:${n===10?'#fff':'var(--text)'}">${n}</button>`).join('')}
-          </div>
-          <button id="generate-btn" onclick="generateBatch()" style="width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-family:var(--font-ui);font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s">
-            ✦ Generer forslag for neste 10 produkter
-          </button>
-          <div id="batch-progress" style="margin-top:12px;font-size:12px;color:var(--muted);text-align:center"></div>
-        </div>
+        <p style="margin-bottom:20px">Velg batch-størrelse i headeren, og trykk "✦ Generer" for å starte.</p>
+        <button id="generate-btn" onclick="generateBatch()" style="padding:13px 28px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-family:var(--font-ui);font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s;margin-bottom:12px">
+          ✦ Generer forslag
+        </button>
+        <div id="batch-progress" style="font-size:12px;color:var(--muted);text-align:center"></div>
       </div>
     </main>
   </div>
@@ -516,11 +515,12 @@ function loadDemo(){
 }
 /* ── PASSWORD ───────────────────────────────────── */
 function checkPassword(){
-  const val = document.getElementById('pw-input').value;
+  const val = (document.getElementById('pw-input').value||'').trim();
   const err = document.getElementById('pw-error');
   if(val === 'Novooi26'){
+    err.style.display='none';
     document.getElementById('password-overlay').style.display='none';
-    $show('config-overlay');
+    document.getElementById('config-overlay').classList.remove('hidden');
   } else {
     err.style.display='block';
     document.getElementById('pw-input').value='';
@@ -614,21 +614,31 @@ async function generateBatch(){
 }
 
 function updateBatchUI(){
-  const btn = document.getElementById('generate-btn');
-  if(!btn) return;
   const unprocessed = S.products.filter(p=>!S.processed.has(p.id)).length;
-  btn.disabled = S.generating || unprocessed===0;
-  btn.style.opacity = (S.generating || unprocessed===0) ? '.4' : '1';
-  btn.textContent = S.generating ? '⏳ Genererer…' : `✦ Generer forslag for neste ${Math.min(S.batchSize,unprocessed)} produkter`;
+  const disabled = S.generating || unprocessed===0;
+  // Header generate button
+  const hdrBtn = document.getElementById('generate-btn-hdr');
+  if(hdrBtn){ hdrBtn.disabled=disabled; hdrBtn.style.opacity=disabled?'.4':'1'; hdrBtn.textContent=S.generating?'⏳ Genererer…':'✦ Generer'; }
+  // Empty-state generate button
+  const btn = document.getElementById('generate-btn');
+  if(btn){ btn.disabled=disabled; btn.style.opacity=disabled?'.4':'1'; btn.textContent=S.generating?'⏳ Genererer…':`✦ Generer forslag for neste ${Math.min(S.batchSize,unprocessed)} produkter`; }
+  initBatchSizeButtons();
   renderBatchProgress();
 }
 
-function setBatchSize(n, el){
-  S.batchSize=n;
-  document.querySelectorAll('.batch-size-btn').forEach(b=>{
-    b.style.background='var(--bg)'; b.style.color='var(--text)'; b.style.borderColor='var(--border)';
+function initBatchSizeButtons(){
+  ['batch-size-wrap','header-batch-wrap'].forEach(wrapId=>{
+    const wrap=document.getElementById(wrapId);
+    if(!wrap)return;
+    wrap.innerHTML=[5,10,25,50].map(n=>{
+      const a=n===S.batchSize;
+      return `<button onclick="setBatchSize(${n})" style="padding:4px 10px;border-radius:6px;font-family:var(--font-ui);font-size:12px;font-weight:${a?'600':'500'};cursor:pointer;transition:all .15s;border:1px solid ${a?'var(--accent)':'var(--border)'};background:${a?'var(--accent)':'var(--bg)'};color:${a?'#fff':'var(--text)'}">${n}</button>`;
+    }).join('');
   });
-  el.style.background='var(--accent)'; el.style.color='#fff'; el.style.borderColor='var(--accent)';
+}
+
+function setBatchSize(n){
+  S.batchSize=n;
   updateBatchUI();
 }
 
@@ -980,7 +990,6 @@ function renderMain(){
   const pendF=Object.values(fs).filter(v=>v==='pending').length;
   const avg=S.approvalTimes.length?S.approvalTimes.reduce((a,b)=>a+b,0)/S.approvalTimes.length:40000;
   const est=Math.round(pendF*avg/1000);
-  const main=document.getElementById('main-panel');
   main.innerHTML=`
     ${warnings.length?`<div class="missing-banner"><span class="wi">⚠</span><div><strong>Mangler i nåværende data:</strong><ul>${warnings.map(w=>`<li>• ${w}</li>`).join('')}</ul></div></div>`:''}
     <div class="product-header-bar">

@@ -358,8 +358,12 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
     <div style="display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px 10px">
       <span style="font-size:11px;color:var(--muted);white-space:nowrap">Batch:</span>
       <div id="header-batch-wrap" style="display:flex;gap:4px"></div>
+      <input id="custom-batch-input" type="number" min="1" max="200" placeholder="…"
+        onchange="setCustomBatch(this.value)"
+        style="width:46px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;font-family:var(--font-mo);font-size:12px;background:var(--bg);color:var(--text);outline:none">
     </div>
     <button id="generate-btn-hdr" onclick="generateBatch()" style="padding:6px 13px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:var(--font-ui);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity .15s">✦ Generer</button>
+    <button class="h-btn" onclick="showBrandMapping()" title="Definer merkevarenavn">🏷 Merker</button>
     <button class="h-btn" id="dark-btn" onclick="toggleDark()" title="Bytt tema">☀</button>
     <button class="h-btn undo-btn" id="undo-btn" onclick="undo()" disabled>↩ Angre</button>
     <button class="h-btn" id="stats-btn" onclick="toggleStats()">📊 Oversikt</button>
@@ -430,6 +434,29 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 </div>
 
 <div class="toast hidden" id="toast"></div>
+
+<!-- BRAND MAPPING MODAL -->
+<div class="modal-overlay hidden" id="brand-modal" onclick="if(event.target===this)hideBrandMapping()">
+  <div class="modal-card" style="width:480px;max-height:80vh;overflow-y:auto">
+    <h3>🏷 Merkevaremapping</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5">
+      Definer hvilke merkevarenavn som skal brukes. Legg til SKU-prefiks eller kategori/tag-navn og riktig merkevarenavn. Claude vil alltid bruke disse mappingene.
+    </p>
+    <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;display:grid;grid-template-columns:1fr 1fr 28px;gap:8px">
+      <span>SKU-prefiks / kategori / tag</span><span>Merkevarenavn</span><span></span>
+    </div>
+    <div id="brand-map-rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
+    <button onclick="addBrandRow()" style="width:100%;padding:8px;background:var(--bg);border:1px dashed var(--border2);border-radius:8px;font-family:var(--font-ui);font-size:13px;color:var(--muted);cursor:pointer;transition:all .15s;margin-bottom:14px">+ Legg til mapping</button>
+    <div style="background:var(--warn-bg);border:1px solid #E8C890;border-radius:8px;padding:10px 12px;font-size:12px;color:var(--warn-txt);margin-bottom:16px;line-height:1.5">
+      <strong>Eksempel:</strong> SKU-prefiks <code style="font-family:var(--font-mo)">INHOUSE</code> → <code style="font-family:var(--font-mo)">InHouse</code><br>
+      Kategori <code style="font-family:var(--font-mo)">LK Hjelle</code> → <code style="font-family:var(--font-mo)">LK Hjelle</code>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="hideBrandMapping()">Lukk</button>
+      <button class="btn-confirm" onclick="saveBrandMapping()">Lagre</button>
+    </div>
+  </div>
+</div>
 
 <script>
 /* ── BRAND COLORS ─────────────────────────────── */
@@ -685,50 +712,24 @@ function mapRaw(woo){
 }
 
 function extractBrand(woo){
-  // 1. Check Dokan store/vendor meta (common on Novooi)
-  const meta = woo.meta_data || [];
-  for(const m of meta){
-    const k = (m.key||'').toLowerCase();
-    if((k==='_store_name'||k.includes('vendor_name')||k.includes('brand')||k.includes('produsent')||k.includes('leverandor'))&&m.value&&typeof m.value==='string'&&m.value.length>0){
-      return m.value;
-    }
-  }
-  // 2. Check product attributes
+  const meta  = woo.meta_data  || [];
   const attrs = woo.attributes || [];
-  for(const attr of attrs){
-    const n = (attr.name||'').toLowerCase();
-    if(n.includes('brand')||n.includes('leverandør')||n.includes('produsent')||n.includes('merkevare')||n.includes('designer')){
-      const v = Array.isArray(attr.options) ? attr.options[0] : attr.option;
-      if(v && !/^\d+$/.test(v)) return v; // skip pure numeric values
-    }
-  }
-  // 3. Check categories – look for non-generic category names that match known brands
-  const cats = (woo.categories||[]).map(c=>c.name);
-  const fromCat = detectBrand(cats.join(' '), '');
-  if(fromCat) return fromCat;
-  // 4. Check tags for known brands
-  const tagNames = (woo.tags||[]).map(t=>t.name);
-  const fromTag = detectBrand(tagNames.join(' '), woo.name);
-  if(fromTag) return fromTag;
-  // 5. Extract from SKU prefix and map common abbreviations
-  const sku = woo.sku || '';
-  const skuPrefix = sku.split('-')[0].toUpperCase();
-  const skuBrandMap = {
-    'INHOUSE':'InHouse','MUUTO':'Muuto','HAY':'HAY','NORMANN':'Normann Copenhagen',
-    'FRITZ':'Fritz Hansen','FERM':'Ferm Living','GUBI':'Gubi','NORTHERN':'Northern',
-    'FJORD':'Fjordfiesta','NESJE':'Nesje','NUEN':'Nuen','LK':'LK Hjelle',
-    'BOLIA':'Bolia','FOGIA':'Fogia','WOUD':'Woud','HEM':'Hem',
-  };
-  if(skuBrandMap[skuPrefix]) return skuBrandMap[skuPrefix];
-  if(skuPrefix.length >= 3 && !/^\d+$/.test(skuPrefix)){
-    return skuPrefix.charAt(0) + skuPrefix.slice(1).toLowerCase();
-  }
-  // 6. Last resort: first non-generic category
-  const genericCats = ['møbler','belysning','tekstil','dekor','keramikk','gulvtepper','tepper','stoler','bord','lamper','sofaer'];
-  for(const c of cats){
-    if(!genericCats.includes(c.toLowerCase())) return c;
-  }
-  return cats[0] || '';
+  // Apply user-defined brand mapping as final override
+  const rawBrand = (() => {
+    // [original logic returns here]
+    for(const m of meta){ const k=(m.key||'').toLowerCase(); if((k==='_store_name'||k.includes('vendor_name')||k.includes('brand')||k.includes('produsent')||k.includes('leverandor'))&&m.value&&typeof m.value==='string'&&m.value.length>0) return m.value; }
+    for(const attr of attrs){ const n=(attr.name||'').toLowerCase(); if(n.includes('brand')||n.includes('leverandør')||n.includes('produsent')||n.includes('merkevare')||n.includes('designer')){ const v=Array.isArray(attr.options)?attr.options[0]:attr.option; if(v&&!/^\d+$/.test(v)) return v; } }
+    const cats=(woo.categories||[]).map(c=>c.name); const fromCat=detectBrand(cats.join(' '),''); if(fromCat) return fromCat;
+    const tagNames=(woo.tags||[]).map(t=>t.name); const fromTag=detectBrand(tagNames.join(' '),woo.name); if(fromTag) return fromTag;
+    const sku=woo.sku||''; const skuPrefix=sku.split('-')[0].toUpperCase();
+    const skuBrandMap={'INHOUSE':'InHouse','MUUTO':'Muuto','HAY':'HAY','NORMANN':'Normann Copenhagen','FRITZ':'Fritz Hansen','FERM':'Ferm Living','GUBI':'Gubi','NORTHERN':'Northern','FJORD':'Fjordfiesta','NESJE':'Nesje','NUEN':'Nuen','LK':'LK Hjelle','BOLIA':'Bolia','FOGIA':'Fogia','WOUD':'Woud','HEM':'Hem'};
+    if(skuBrandMap[skuPrefix]) return skuBrandMap[skuPrefix];
+    if(skuPrefix.length>=3&&!/^\d+$/.test(skuPrefix)) return skuPrefix.charAt(0)+skuPrefix.slice(1).toLowerCase();
+    const genericCats=['møbler','belysning','tekstil','dekor','keramikk','gulvtepper','tepper','stoler','bord','lamper','sofaer'];
+    for(const c of cats){ if(!genericCats.includes(c.toLowerCase())) return c; }
+    return cats[0]||'';
+  })();
+  return applyUserBrandMap(rawBrand);
 }
 
 /* ── WOOCOMMERCE FETCH ──────────────────────────── */
@@ -880,10 +881,14 @@ Svar KUN med gyldig JSON:
 
 Beskriv nøyaktig hva som faktisk vises i hvert bilde. Svar KUN med JSON:
 {
-  "altTexts": ["Nøyaktig engelsk beskrivelse av bilde 1", "...bilde 2", "...bilde 3"],
-  "imageTitles": ["${brand} ${cleanName} – [kort bildebeskrivelse]", "...bilde 2", "...bilde 3"]
+  "altTexts": ["Engelsk beskrivelse bilde 1", "...bilde 2", "...bilde 3"],
+  "imageTitles": ["${brand} ${cleanName} – [bildebeskrivelse]", "...bilde 2", "...bilde 3"]
 }
-Regler: Beskriv kun det du faktisk ser. Ikke finn opp miljøer eller situasjoner som ikke er synlige. Maks 125 tegn per alt-tekst.` }
+REGLER:
+- Start ALLTID alt-tekst med: "${brand} ${cleanName}" etterfulgt av en beskrivelse av motivet
+- Beskriv kun det som faktisk er synlig – ikke finn opp miljøer
+- Eksempel: "${brand} ${cleanName} – close-up showing texture and color"
+- Maks 125 tegn per alt-tekst` }
     ];
 
     const altRes = await fetch(`${CREDS.proxy}/claude`, {
@@ -911,6 +916,70 @@ Regler: Beskriv kun det du faktisk ser. Ikke finn opp miljøer eller situasjoner
     tags:              parsed.tags               || '',
     altTexts, imageTitles,
   };
+}
+
+/* ── BRAND MAPPING ──────────────────────────────── */
+// User-defined brand mappings: { 'INHOUSE': 'InHouse', 'LK Hjelle': 'LK Hjelle', ... }
+let USER_BRAND_MAP = {};
+
+function loadBrandMap(){
+  try { USER_BRAND_MAP = JSON.parse(localStorage.getItem('seo_brand_map')||'{}'); } catch(e){}
+}
+function saveBrandMapping(){
+  const rows = document.querySelectorAll('.brand-map-row');
+  const map = {};
+  rows.forEach(row=>{
+    const key=(row.querySelector('.bm-key').value||'').trim();
+    const val=(row.querySelector('.bm-val').value||'').trim();
+    if(key&&val) map[key]=val;
+  });
+  USER_BRAND_MAP=map;
+  localStorage.setItem('seo_brand_map', JSON.stringify(map));
+  hideBrandMapping();
+  showToast(`✓ ${Object.keys(map).length} merkevaremappinger lagret`,'success');
+}
+function showBrandMapping(){
+  const container=document.getElementById('brand-map-rows');
+  container.innerHTML='';
+  // Pre-fill with saved mappings
+  const entries=Object.entries(USER_BRAND_MAP);
+  if(entries.length===0) entries.push(['','']); // one empty row to start
+  entries.forEach(([k,v])=>addBrandRow(k,v));
+  document.getElementById('brand-modal').classList.remove('hidden');
+}
+function hideBrandMapping(){ document.getElementById('brand-modal').classList.add('hidden'); }
+function addBrandRow(key='',val=''){
+  const row=document.createElement('div');
+  row.className='brand-map-row';
+  row.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px;gap:8px;align-items:center';
+  row.innerHTML=`
+    <input class="bm-key" value="${esc(key)}" placeholder="INHOUSE / Gulvtepper" style="padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-family:var(--font-mo);font-size:12px;background:var(--bg);color:var(--text);outline:none;width:100%">
+    <input class="bm-val" value="${esc(val)}" placeholder="InHouse" style="padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-family:var(--font-ui);font-size:13px;background:var(--bg);color:var(--text);outline:none;width:100%">
+    <button onclick="this.closest('.brand-map-row').remove()" style="width:28px;height:28px;background:var(--del-bg);border:none;border-radius:6px;cursor:pointer;color:var(--del-txt);font-size:14px;display:flex;align-items:center;justify-content:center">×</button>`;
+  document.getElementById('brand-map-rows').appendChild(row);
+}
+
+function applyUserBrandMap(rawBrand){
+  // Check user-defined mappings first (case-insensitive key match)
+  for(const [key,val] of Object.entries(USER_BRAND_MAP)){
+    if(rawBrand.toLowerCase()===key.toLowerCase() || rawBrand.toUpperCase()===key.toUpperCase()) return val;
+  }
+  // Partial match for SKU prefixes
+  for(const [key,val] of Object.entries(USER_BRAND_MAP)){
+    if(rawBrand.toUpperCase().startsWith(key.toUpperCase())) return val;
+  }
+  return rawBrand;
+}
+
+/* ── CUSTOM BATCH SIZE ──────────────────────────── */
+function setCustomBatch(val){
+  const n=parseInt(val);
+  if(n>0&&n<=500){
+    S.batchSize=n;
+    // Deselect preset buttons
+    document.querySelectorAll('#header-batch-wrap button').forEach(b=>{ b.style.background='var(--bg)'; b.style.color='var(--text)'; b.style.borderColor='var(--border)'; });
+    updateBatchUI();
+  }
 }
 
 function setLoading(on, msg=''){
@@ -1647,6 +1716,7 @@ function escA(s){return String(s).replace(/"/g,'&quot;');}
 function stripHtml(h){return(h||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();}
 function now(){return new Date().toLocaleTimeString('no-NO',{hour:'2-digit',minute:'2-digit'});}
 function fmtTime(sec){if(sec<60)return`${sec} sek`;const m=Math.floor(sec/60),s=sec%60;if(m<60)return s>0?`${m}m ${s}s`:`${m} min`;return`${Math.floor(m/60)}t ${m%60}m`;}
+loadBrandMap();
 </script>
 </body>
 </html>

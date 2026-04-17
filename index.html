@@ -406,6 +406,9 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <!-- STATS PANEL -->
 <div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
 
+<!-- VERSION FOOTER -->
+<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.15</div>
+
 <!-- KEYBOARD HELP -->
 <div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
   <div class="kb-card">
@@ -593,6 +596,38 @@ async function fetchAndLoad(){
   }
 }
 
+/* ── QUALITY CHECK (skip AI if already good) ─────── */
+function checkExistingQuality(p){
+  const f = p.fields;
+  const reasons = [];
+
+  // Description: needs >200 chars of actual content
+  const descText = (f.description.current||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+  if(descText.length < 200) reasons.push('beskrivelse for kort');
+
+  // Short description: needs 120-158 chars
+  const shortLen = (f.shortDescription.current||'').length;
+  if(shortLen < 120 || shortLen > 158) reasons.push('kort beskrivelse utenfor 120-158 tegn');
+
+  // Yoast title: needs to exist and be ≤60 chars
+  const ytLen = (f.yoast.currentTitle||'').length;
+  if(ytLen === 0 || ytLen > 60) reasons.push('Yoast-tittel mangler eller for lang');
+  // Also skip if title contains Yoast template variables like %%title%%
+  if((f.yoast.currentTitle||'').includes('%%')) reasons.push('Yoast-tittel har malvariabler');
+
+  // Yoast meta: needs 120-158 chars
+  const ymLen = (f.yoast.currentMeta||'').length;
+  if(ymLen < 120 || ymLen > 158) reasons.push('Yoast meta mangler eller feil lengde');
+
+  // Alt texts: at least first image needs alt text
+  const imgs = f.altTexts || [];
+  const missingAlts = imgs.filter(i=>!i.current||i.current.length<10).length;
+  if(missingAlts > 0) reasons.push(`${missingAlts} bilde(r) mangler alt-tekst`);
+
+  const allGood = reasons.length === 0;
+  return { allGood, reason: reasons[0]||'' };
+}
+
 /* ── BATCH AI GENERATION ────────────────────────── */
 async function generateBatch(){
   if(S.generating){ showToast('Generering pågår allerede…','warn'); return; }
@@ -601,24 +636,40 @@ async function generateBatch(){
   const batch = unprocessed.slice(0, S.batchSize);
   S.generating = true;
   updateBatchUI();
-  setLoading(true,`Genererer AI-forslag for ${batch.length} produkter…`);
+  setLoading(true,`Behandler ${batch.length} produkter…`);
+  let skipped=0, generated=0;
   try {
     for(let i=0; i<batch.length; i++){
       const p = batch[i];
-      setLoading(true,`Genererer forslag for "${p.name}" (${i+1}/${batch.length})…`);
-      const suggestions = await generateSuggestions(p.name, p.fields.description.current, p.fields.shortDescription.current, p.brand, p.fields.altTexts);
-      // Inject suggestions into product
-      p.fields.description.suggested      = suggestions.description;
-      p.fields.shortDescription.suggested = suggestions.shortDescription;
-      p.fields.yoast.suggestedTitle       = suggestions.yoastTitle;
-      p.fields.yoast.suggestedMeta        = suggestions.yoastMeta;
-      p.fields.keyphrase.suggested        = suggestions.focusKeyphrase;
-      p.fields.synonyms.suggested         = suggestions.keyphraseSynonyms;
-      p.fields.tags.suggested             = suggestions.tags;
-      p.fields.altTexts.forEach((img,idx)=>{
-        img.suggested      = suggestions.altTexts[idx]   || '';
-        img.suggestedTitle = suggestions.imageTitles[idx] || '';
-      });
+      const quality = checkExistingQuality(p);
+      if(quality.allGood){
+        // Content already good – reuse existing as suggestions, skip AI call
+        setLoading(true,`✓ Beholder eksisterende innhold for "${p.name}" (${i+1}/${batch.length})…`);
+        p.fields.description.suggested      = p.fields.description.current;
+        p.fields.shortDescription.suggested = p.fields.shortDescription.current;
+        p.fields.yoast.suggestedTitle       = p.fields.yoast.currentTitle;
+        p.fields.yoast.suggestedMeta        = p.fields.yoast.currentMeta;
+        p.fields.keyphrase.suggested        = p.fields.keyphrase.current;
+        p.fields.synonyms.suggested         = p.fields.synonyms.current;
+        p.fields.tags.suggested             = p.fields.tags.current;
+        p.fields.altTexts.forEach(img=>{ img.suggested=img.current; img.suggestedTitle=img.currentTitle; });
+        skipped++;
+      } else {
+        setLoading(true,`✦ Genererer forslag for "${p.name}" (${i+1}/${batch.length})…${quality.reason?' – '+quality.reason:''}`);
+        const suggestions = await generateSuggestions(p.name, p.fields.description.current, p.fields.shortDescription.current, p.brand, p.fields.altTexts);
+        p.fields.description.suggested      = suggestions.description;
+        p.fields.shortDescription.suggested = suggestions.shortDescription;
+        p.fields.yoast.suggestedTitle       = suggestions.yoastTitle;
+        p.fields.yoast.suggestedMeta        = suggestions.yoastMeta;
+        p.fields.keyphrase.suggested        = suggestions.focusKeyphrase;
+        p.fields.synonyms.suggested         = suggestions.keyphraseSynonyms;
+        p.fields.tags.suggested             = suggestions.tags;
+        p.fields.altTexts.forEach((img,idx)=>{
+          img.suggested      = suggestions.altTexts[idx]   || '';
+          img.suggestedTitle = suggestions.imageTitles[idx] || '';
+        });
+        generated++;
+      }
       S.processed.add(p.id);
       S.fieldStates[p.id]={description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending',keyphrase:'pending',synonyms:'pending',tags:'pending'};
       renderList();
@@ -627,7 +678,10 @@ async function generateBatch(){
     S.generating=false;
     updateBatchUI();
     renderMain(); renderStats();
-    showToast(`✦ ${batch.length} produkter klare for gjennomgang`,'success');
+    const msg = skipped>0
+      ? `✦ ${generated} generert · ${skipped} beholdt eksisterende`
+      : `✦ ${generated} produkter klare for gjennomgang`;
+    showToast(msg,'success');
     // Auto-select first in batch if nothing selected
     if(!S.activeId || !S.processed.has(S.activeId)){
       selectProduct(batch[0].id);
@@ -828,80 +882,111 @@ function detectBrand(hint, name){
   return null;
 }
 
+/* ── QUALITY CHECK – skip AI if already good ────── */
+function assessQuality(product){
+  const f = product.fields;
+  const issues = [];
+
+  // Description: strip HTML, check length
+  const descText = (f.description.current||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+  if(descText.length < 200) issues.push('description');
+
+  // Short description: 120-158 chars
+  const sd = (f.shortDescription.current||'').trim();
+  if(sd.length < 120 || sd.length > 158) issues.push('shortDescription');
+
+  // Yoast title: non-empty, under 60 chars
+  const yt = (f.yoast.currentTitle||'').trim();
+  if(!yt || yt.length > 60 || yt.includes('%%')) issues.push('yoast');
+
+  // Focus keyphrase
+  if(!(f.keyphrase.current||'').trim()) issues.push('keyphrase');
+
+  // Alt texts: at least first image has alt
+  const hasAlts = (f.altTexts||[]).some(i=>(i.current||'').length > 10);
+  if(!hasAlts) issues.push('altTexts');
+
+  return issues; // empty = all good, no AI needed
+}
+
 /* ── CLAUDE AI GENERATION ───────────────────────── */
-async function generateSuggestions(name, currentDesc, currentShort, brand, images){
+async function generateSuggestions(name, currentDesc, currentShort, brand, images, skipFields=[]){
   const strippedDesc = currentDesc.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
 
-  // Strip leading numeric product codes from name (e.g. "1068 Twilight Grønn Teppe" → "Twilight Grønn Teppe")
+  // Strip leading numeric product codes (e.g. "1068 Twilight Grønn Teppe" → "Twilight Grønn Teppe")
   const cleanName = name.replace(/^\d+\s+/, '').trim();
   const productCode = name !== cleanName ? name.match(/^(\d+)/)?.[1] : null;
 
-  // ── Main text fields (no images needed) ──────────
-  const textPrompt = `Du er en produkttekst-spesialist for Novooi – norsk premium interiør- og designbutikk.
+  // ── Main text fields ─────────────────────────────
+  const needsText = ['description','shortDescription','yoast','keyphrase','synonyms','tags'].some(k=>!skipFields.includes(k));
 
-Produkt: ${cleanName}${productCode ? ` (produktkode: ${productCode} – dette er IKKE merkevarenavn)` : ''}
-Produsent/merkevare: ${brand}
-Eksisterende beskrivelse: ${strippedDesc || '(ingen)'}
+  let parsed = {};
+  if(needsText){
+    const textPrompt = `You are a product text specialist for Novooi – a Norwegian premium interior design store.
 
-REGLER:
-- Merkevarenavn er "${brand}" – bruk dette eksakt i alle felter
-- "${productCode||''}" er en produktkode, IKKE et merkevarenavn
-- Ikke bruk kategorinavn (Gulvtepper, Belysning osv.) som merkevare
+Product: ${cleanName}${productCode?` (product code: ${productCode} – NOT a brand name)`:''}
+Brand/manufacturer: ${brand}
+Existing description: ${strippedDesc || '(none)'}
 
-Svar KUN med gyldig JSON:
+RULES:
+- Brand name is "${brand}" – use this exactly everywhere
+- "${productCode||''}" is a product code, NOT a brand name
+- ALL Yoast fields (title, meta, shortDescription, focusKeyphrase) MUST be in English – translate Norwegian names
+- Do NOT use category names (Gulvtepper, Belysning etc.) as brand name
+
+Respond ONLY with valid JSON:
 {
-  "description": "Norsk HTML-tekst med <p>avsnitt</p> og <ul><li>egenskaper</li></ul>. Minst 2 avsnitt à 3-5 setninger.",
-  "shortDescription": "Engelsk SEO-tekst 120-158 tegn. Format: [${cleanName}] by ${brand} – [nøkkelegenskaper].",
-  "yoastTitle": "Engelsk tittel maks 60 tegn. Format: ${cleanName} | ${brand}",
-  "yoastMeta": "Engelsk meta 120-158 tegn med produktnavn og ${brand}.",
-  "focusKeyphrase": "Norsk søkefrase: produktnavn + ${brand}, maks 4 ord.",
-  "keyphraseSynonyms": "3-5 kommaseparerte end-of-funnel søkefraser.",
-  "tags": "6-12 kommaseparerte tagger fra: STIL(skandinavisk/minimalistisk/industriell/klassisk/moderne/bohemsk/rustikk/japandi), MATERIALE(tre/metall/messing/kopper/keramikk/glass/tekstil/lin/bomull/ull/rotting/marmor/lær/sandstein), ROM(stue/soverom/kjøkken/bad/gang/kontor/utendørs/barnerom/spisestue/entre), FARGE(hvit/sort/grå/beige/naturlig/varm/brun/blå/grønn/rosa), EGENSKAP(dimbar/håndlaget/bærekraftig/vaskemaskinvennlig/allergivennlig/barnesikker/utendørsvennlig), BRUK(gave/lesekrok/hyggelig/statement-møbel/lettvekt/plass-effektiv). Kun åpenbart riktige tagger."
+  "description": "Norwegian HTML with <p>paragraphs</p> and <ul><li>specs/materials</li></ul>. Min 2 paragraphs of 3-5 sentences.",
+  "shortDescription": "ENGLISH only, exactly 120-158 chars. Format: [English product name] by ${brand} – [key features].",
+  "yoastTitle": "ENGLISH only, max 60 chars. Translate Norwegian product name to English. Format: [English name] | ${brand}",
+  "yoastMeta": "ENGLISH only, 120-158 chars. Translate product name to English. Include ${brand} and 1-2 buying arguments.",
+  "focusKeyphrase": "ENGLISH only: English product name + ${brand}, max 4 words.",
+  "keyphraseSynonyms": "6-8 comma-separated variations combining brand and product name in different orders and languages. Must include variations like: '${brand} ${cleanName}', '${cleanName} ${brand}', '${cleanName} from ${brand}', 'buy ${brand} ${cleanName}', English translation + ${brand}, ${brand} + first word of name, last word of name + ${brand}. Mix Norwegian and English.",
+  "tags": "6-12 comma-separated tags for AI chatbot recommendations. ONLY from: STYLE(skandinavisk/minimalistisk/industriell/klassisk/moderne/bohemsk/rustikk/japandi), MATERIAL(tre/metall/messing/kopper/keramikk/glass/tekstil/lin/bomull/ull/rotting/marmor/lær/sandstein), ROOM(stue/soverom/kjøkken/bad/gang/kontor/utendørs/barnerom/spisestue/entre), COLOR(hvit/sort/grå/beige/naturlig/varm/brun/blå/grønn/rosa), PROPERTY(dimbar/håndlaget/vaskemaskinvennlig/allergivennlig/barnesikker/utendørsvennlig/justerbar/sammenleggbar), USE(gave/lesekrok/hyggelig/statement-møbel/lettvekt/plass-effektiv/kontorvennlig). NEVER use: bærekraftig, miljøvennlig, i-serie. Max 12 total. Only obvious matches."
 }`;
 
-  const textRes = await fetch(`${CREDS.proxy}/claude`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1200, messages:[{role:'user',content:textPrompt}] })
-  });
-  if(!textRes.ok){ const e=await textRes.json().catch(()=>({})); throw new Error(`Claude API: ${e.error?.message||textRes.status}`); }
-  const textData = await textRes.json();
-  const textRaw = textData.content?.[0]?.text || '{}';
-  let parsed = {};
-  try { parsed = JSON.parse(textRaw.replace(/```json|```/g,'').trim()); } catch(e){ console.warn('JSON parse failed',name,textRaw); }
+    const textRes = await fetch(`${CREDS.proxy}/claude`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1200, messages:[{role:'user',content:textPrompt}] })
+    });
+    if(!textRes.ok){ const e=await textRes.json().catch(()=>({})); throw new Error(`Claude API: ${e.error?.message||textRes.status}`); }
+    const textData = await textRes.json();
+    const textRaw = textData.content?.[0]?.text || '{}';
+    try { parsed = JSON.parse(textRaw.replace(/```json|```/g,'').trim()); }
+    catch(e){ console.warn('JSON parse failed',name,textRaw); }
+  }
 
-  // ── Alt texts with vision (if image URLs available) ──
+  // ── Alt texts with vision ─────────────────────────
   const imgUrls = images.map(i=>i.src).filter(Boolean);
   let altTexts = ['','',''], imageTitles = ['','',''];
 
-  if(imgUrls.length > 0){
-    // Build vision message with actual images
+  if(imgUrls.length > 0 && !skipFields.includes('altTexts')){
     const visionContent = [
       ...imgUrls.slice(0,3).map(url=>({ type:'image', source:{ type:'url', url } })),
-      { type:'text', text:`Du ser ${imgUrls.length} produktbilde(r) av "${cleanName}" fra ${brand}.
+      { type:'text', text:`You see ${imgUrls.length} product image(s) of "${cleanName}" by ${brand}.
 
-Beskriv nøyaktig hva som faktisk vises i hvert bilde. Svar KUN med JSON:
+Describe exactly what is visible in each image. Respond ONLY with JSON:
 {
-  "altTexts": ["Engelsk beskrivelse bilde 1", "...bilde 2", "...bilde 3"],
-  "imageTitles": ["${brand} ${cleanName} – [bildebeskrivelse]", "...bilde 2", "...bilde 3"]
+  "altTexts": ["description image 1", "image 2", "image 3"],
+  "imageTitles": ["${brand} ${cleanName} – description 1", "image 2", "image 3"]
 }
-REGLER:
-- Start ALLTID alt-tekst med: "${brand} ${cleanName}" etterfulgt av en beskrivelse av motivet
-- Beskriv kun det som faktisk er synlig – ikke finn opp miljøer
-- Eksempel: "${brand} ${cleanName} – close-up showing texture and color"
-- Maks 125 tegn per alt-tekst` }
+RULES:
+- ALWAYS start alt text with "${brand} ${cleanName}" followed by what you see
+- Describe only what is actually visible – never invent environments
+- Example: "${brand} ${cleanName} – close-up of texture and pile"
+- Max 125 chars per alt text` }
     ];
-
     const altRes = await fetch(`${CREDS.proxy}/claude`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:400, messages:[{role:'user',content:visionContent}] })
     });
     if(altRes.ok){
       const altData = await altRes.json();
-      const altRaw = altData.content?.[0]?.text || '{}';
+      const altRaw = altData.content?.[0]?.text||'{}';
       try {
-        const altParsed = JSON.parse(altRaw.replace(/```json|```/g,'').trim());
-        altTexts    = altParsed.altTexts    || altTexts;
-        imageTitles = altParsed.imageTitles || imageTitles;
+        const ap = JSON.parse(altRaw.replace(/```json|```/g,'').trim());
+        altTexts    = ap.altTexts    || altTexts;
+        imageTitles = ap.imageTitles || imageTitles;
       } catch(e){ console.warn('Alt text parse failed', altRaw); }
     }
   }

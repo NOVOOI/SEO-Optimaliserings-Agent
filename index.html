@@ -407,7 +407,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
 
 <!-- VERSION FOOTER -->
-<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.15</div>
+<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.16</div>
 
 <!-- KEYBOARD HELP -->
 <div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
@@ -527,7 +527,7 @@ const DEMO = [
 ];
 
 /* ── STATE ─────────────────────────────────────── */
-const S={products:[],activeId:null,fieldStates:{},undoStack:[],changelog:[],openFields:{},darkMode:false,statsOpen:false,filter:'all',approvalTimes:[],pendingBatch:null,processed:new Set(),batchSize:10,generating:false};
+const S={products:[],activeId:null,fieldStates:{},undoStack:[],changelog:[],openFields:{},darkMode:false,statsOpen:false,filter:'all',approvalTimes:[],pendingBatch:null,processed:new Set(),batchSize:10,generating:false,manualDone:new Set(),selectedFields:new Set(['description','shortDescription','yoast','altTexts','keyphrase','synonyms','tags'])};
 
 /* ── INIT ──────────────────────────────────────── */
 function loadDemo(){
@@ -628,12 +628,87 @@ function checkExistingQuality(p){
   return { allGood, reason: reasons[0]||'' };
 }
 
-/* ── BATCH AI GENERATION ────────────────────────── */
-async function generateBatch(){
+/* ── FIELD SELECTION + COST ESTIMATE MODAL ────────── */
+const FIELD_COST = { // approximate tokens per field (input+output combined * price)
+  description:0.0035, shortDescription:0.0015, yoast:0.0020,
+  altTexts:0.0025, keyphrase:0.0008, synonyms:0.0008, tags:0.0010
+};
+const VISION_COST_PER_IMG = 0.0008;
+
+function generateBatch(){
   if(S.generating){ showToast('Generering pågår allerede…','warn'); return; }
   const unprocessed = S.products.filter(p=>!S.processed.has(p.id));
   if(!unprocessed.length){ showToast('Alle produkter er allerede behandlet','warn'); return; }
   const batch = unprocessed.slice(0, S.batchSize);
+  showGenerateModal(batch);
+}
+
+function showGenerateModal(batch){
+  const n = batch.length;
+  // Count how many actually need AI (quality check)
+  const needsAI = batch.filter(p => !checkExistingQuality(p).allGood).length;
+  const skippable = n - needsAI;
+
+  const fieldDefs = [
+    {key:'description',     label:'Produktbeskrivelse', icon:'📝'},
+    {key:'shortDescription',label:'Kort beskrivelse (SEO)', icon:'🔤'},
+    {key:'yoast',           label:'Yoast SEO (tittel + meta)', icon:'🔍'},
+    {key:'altTexts',        label:'Alt-tekster (med vision)', icon:'🖼'},
+    {key:'keyphrase',       label:'Focus Keyphrase', icon:'🎯'},
+    {key:'synonyms',        label:'Keyphrase Synonyms', icon:'🔗'},
+    {key:'tags',            label:'Produkttagger', icon:'🏷'},
+  ];
+
+  function calcCost(){
+    let cost = 0;
+    fieldDefs.forEach(f=>{
+      if(S.selectedFields.has(f.key)){
+        cost += (FIELD_COST[f.key]||0.002) * needsAI;
+        if(f.key==='altTexts') cost += VISION_COST_PER_IMG * 3 * needsAI;
+      }
+    });
+    return cost;
+  }
+
+  const modal = document.getElementById('batch-modal');
+  document.getElementById('batch-title').textContent = `✦ Generer forslag – ${n} produkter`;
+  document.getElementById('batch-desc').innerHTML = `
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px;line-height:1.5">
+      ${skippable>0?`<span style="color:var(--add-txt);font-weight:600">${skippable} produkt${skippable!==1?'er':''}</span> har allerede god innhold og hoppes over. `:''}
+      <span style="color:var(--text);font-weight:600">${needsAI} produkt${needsAI!==1?'er':''}</span> trenger AI-generering.
+    </div>
+    <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Velg felter å generere</div>
+    <div id="field-select-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:16px">
+      ${fieldDefs.map(f=>`
+        <label style="display:flex;align-items:center;gap:10px;padding:8px 11px;border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:background .12s;background:${S.selectedFields.has(f.key)?'var(--accent-l)':'var(--bg)'}">
+          <input type="checkbox" ${S.selectedFields.has(f.key)?'checked':''} onchange="toggleFieldSelect('${f.key}',this)" style="width:15px;height:15px;accent-color:var(--accent)">
+          <span style="font-size:13px">${f.icon} ${f.label}</span>
+        </label>`).join('')}
+    </div>
+    <div id="cost-estimate-bar" style="background:var(--warm-l);border:1px solid #E8C4A8;border-radius:8px;padding:10px 13px;display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:12.5px;color:var(--warm)">Estimert kostnad</span>
+      <span id="cost-estimate-val" style="font-family:var(--font-mo);font-size:14px;font-weight:600;color:var(--warm)">$${calcCost().toFixed(3)}</span>
+    </div>`;
+
+  // Store calcCost ref so checkboxes can update it
+  window._calcCost = calcCost;
+
+  document.getElementById('batch-confirm').textContent = `✦ Start generering`;
+  document.getElementById('batch-confirm').onclick = () => { closeBatch(); startGenerateBatch(batch); };
+  $show('batch-modal');
+}
+
+function toggleFieldSelect(key, checkbox){
+  if(checkbox.checked) S.selectedFields.add(key);
+  else S.selectedFields.delete(key);
+  // Update row highlight
+  checkbox.closest('label').style.background = checkbox.checked ? 'var(--accent-l)' : 'var(--bg)';
+  // Update cost estimate
+  const val = document.getElementById('cost-estimate-val');
+  if(val && window._calcCost) val.textContent = '$'+window._calcCost().toFixed(3);
+}
+
+async function startGenerateBatch(batch){
   S.generating = true;
   updateBatchUI();
   setLoading(true,`Behandler ${batch.length} produkter…`);
@@ -643,7 +718,6 @@ async function generateBatch(){
       const p = batch[i];
       const quality = checkExistingQuality(p);
       if(quality.allGood){
-        // Content already good – reuse existing as suggestions, skip AI call
         setLoading(true,`✓ Beholder eksisterende innhold for "${p.name}" (${i+1}/${batch.length})…`);
         p.fields.description.suggested      = p.fields.description.current;
         p.fields.shortDescription.suggested = p.fields.shortDescription.current;
@@ -655,23 +729,25 @@ async function generateBatch(){
         p.fields.altTexts.forEach(img=>{ img.suggested=img.current; img.suggestedTitle=img.currentTitle; });
         skipped++;
       } else {
-        setLoading(true,`✦ Genererer forslag for "${p.name}" (${i+1}/${batch.length})…${quality.reason?' – '+quality.reason:''}`);
-        const suggestions = await generateSuggestions(p.name, p.fields.description.current, p.fields.shortDescription.current, p.brand, p.fields.altTexts);
-        p.fields.description.suggested      = suggestions.description;
-        p.fields.shortDescription.suggested = suggestions.shortDescription;
-        p.fields.yoast.suggestedTitle       = suggestions.yoastTitle;
-        p.fields.yoast.suggestedMeta        = suggestions.yoastMeta;
-        p.fields.keyphrase.suggested        = suggestions.focusKeyphrase;
-        p.fields.synonyms.suggested         = suggestions.keyphraseSynonyms;
-        p.fields.tags.suggested             = suggestions.tags;
-        p.fields.altTexts.forEach((img,idx)=>{
-          img.suggested      = suggestions.altTexts[idx]   || '';
-          img.suggestedTitle = suggestions.imageTitles[idx] || '';
-        });
+        setLoading(true,`✦ Genererer forslag for "${p.name}" (${i+1}/${batch.length})…`);
+        const suggestions = await generateSuggestions(
+          p.name, p.fields.description.current, p.fields.shortDescription.current,
+          p.brand, p.fields.altTexts, S.selectedFields
+        );
+        if(S.selectedFields.has('description'))      p.fields.description.suggested      = suggestions.description      || p.fields.description.current;
+        if(S.selectedFields.has('shortDescription')) p.fields.shortDescription.suggested = suggestions.shortDescription || p.fields.shortDescription.current;
+        if(S.selectedFields.has('yoast')){ p.fields.yoast.suggestedTitle = suggestions.yoastTitle; p.fields.yoast.suggestedMeta = suggestions.yoastMeta; }
+        if(S.selectedFields.has('keyphrase'))  p.fields.keyphrase.suggested = suggestions.focusKeyphrase;
+        if(S.selectedFields.has('synonyms'))   p.fields.synonyms.suggested  = suggestions.keyphraseSynonyms;
+        if(S.selectedFields.has('tags'))       p.fields.tags.suggested       = suggestions.tags;
+        if(S.selectedFields.has('altTexts'))   p.fields.altTexts.forEach((img,idx)=>{ img.suggested=suggestions.altTexts[idx]||''; img.suggestedTitle=suggestions.imageTitles[idx]||''; });
         generated++;
       }
       S.processed.add(p.id);
-      S.fieldStates[p.id]={description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending',keyphrase:'pending',synonyms:'pending',tags:'pending'};
+      // Only set selected fields to pending, keep others as-is
+      const fs = S.fieldStates[p.id] || {};
+      FKEYS.forEach(k=>{ fs[k] = S.selectedFields.has(k) ? 'pending' : (fs[k]||'skipped'); });
+      S.fieldStates[p.id] = fs;
       renderList();
     }
     setLoading(false);
@@ -682,9 +758,9 @@ async function generateBatch(){
       ? `✦ ${generated} generert · ${skipped} beholdt eksisterende`
       : `✦ ${generated} produkter klare for gjennomgang`;
     showToast(msg,'success');
-    // Auto-select first in batch if nothing selected
     if(!S.activeId || !S.processed.has(S.activeId)){
-      selectProduct(batch[0].id);
+      const first = batch.find(p=>S.processed.has(p.id));
+      if(first) selectProduct(first.id);
     }
   } catch(err){
     setLoading(false);
@@ -910,18 +986,29 @@ function assessQuality(product){
 }
 
 /* ── CLAUDE AI GENERATION ───────────────────────── */
-async function generateSuggestions(name, currentDesc, currentShort, brand, images, skipFields=[]){
+async function generateSuggestions(name, currentDesc, currentShort, brand, images, selectedFields=null){
+  const sel = selectedFields instanceof Set ? selectedFields : new Set(FKEYS);
   const strippedDesc = currentDesc.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
 
   // Strip leading numeric product codes (e.g. "1068 Twilight Grønn Teppe" → "Twilight Grønn Teppe")
   const cleanName = name.replace(/^\d+\s+/, '').trim();
   const productCode = name !== cleanName ? name.match(/^(\d+)/)?.[1] : null;
 
-  // ── Main text fields ─────────────────────────────
-  const needsText = ['description','shortDescription','yoast','keyphrase','synonyms','tags'].some(k=>!skipFields.includes(k));
+  // Only request fields that are selected
+  const textFields = ['description','shortDescription','yoast','keyphrase','synonyms','tags'].filter(k=>sel.has(k));
+  const needsText = textFields.length > 0;
 
   let parsed = {};
   if(needsText){
+    // Build JSON fields dynamically – only request what's selected
+    const jsonFields = [];
+    if(sel.has('description'))      jsonFields.push(`  "description": "Norwegian HTML with <p>paragraphs</p> and <ul><li>specs/materials</li></ul>. Min 2 paragraphs of 3-5 sentences."`);
+    if(sel.has('shortDescription')) jsonFields.push(`  "shortDescription": "ENGLISH only, exactly 120-158 chars. Format: [English product name] by ${brand} – [key features]."`);
+    if(sel.has('yoast'))            jsonFields.push(`  "yoastTitle": "ENGLISH only, max 60 chars. Format: [English name] | ${brand}"`, `  "yoastMeta": "ENGLISH only, 120-158 chars. Include ${brand} and 1-2 buying arguments."`);
+    if(sel.has('keyphrase'))        jsonFields.push(`  "focusKeyphrase": "ENGLISH: English product name + ${brand}, max 4 words."`);
+    if(sel.has('synonyms'))         jsonFields.push(`  "keyphraseSynonyms": "6-8 comma-separated variations: '${brand} ${cleanName}', '${cleanName} ${brand}', '${cleanName} from ${brand}', 'buy ${brand} ${cleanName}', English+${brand}, ${brand}+first word, last word+${brand}. Mix Norwegian/English."`);
+    if(sel.has('tags'))             jsonFields.push(`  "tags": "6-12 comma-separated tags. ONLY from STYLE(skandinavisk/minimalistisk/industriell/klassisk/moderne/bohemsk/rustikk/japandi), MATERIAL(tre/metall/messing/kopper/keramikk/glass/tekstil/lin/bomull/ull/rotting/marmor/lær/sandstein), ROOM(stue/soverom/kjøkken/bad/gang/kontor/utendørs/barnerom/spisestue/entre), COLOR(hvit/sort/grå/beige/naturlig/varm/brun/blå/grønn/rosa), PROPERTY(dimbar/håndlaget/vaskemaskinvennlig/allergivennlig/barnesikker/utendørsvennlig/justerbar/sammenleggbar), USE(gave/lesekrok/hyggelig/statement-møbel/lettvekt/plass-effektiv). NEVER: bærekraftig, miljøvennlig. Max 12."`);
+
     const textPrompt = `You are a product text specialist for Novooi – a Norwegian premium interior design store.
 
 Product: ${cleanName}${productCode?` (product code: ${productCode} – NOT a brand name)`:''}
@@ -929,20 +1016,13 @@ Brand/manufacturer: ${brand}
 Existing description: ${strippedDesc || '(none)'}
 
 RULES:
-- Brand name is "${brand}" – use this exactly everywhere
-- "${productCode||''}" is a product code, NOT a brand name
-- ALL Yoast fields (title, meta, shortDescription, focusKeyphrase) MUST be in English – translate Norwegian names
-- Do NOT use category names (Gulvtepper, Belysning etc.) as brand name
+- Brand name is "${brand}" – use this exactly. NEVER replace with category names.
+- "${productCode||''}" is a product code, NOT a brand name.
+- ALL English fields MUST be in English – translate Norwegian product names.
 
-Respond ONLY with valid JSON:
+Respond ONLY with valid JSON containing exactly these fields:
 {
-  "description": "Norwegian HTML with <p>paragraphs</p> and <ul><li>specs/materials</li></ul>. Min 2 paragraphs of 3-5 sentences.",
-  "shortDescription": "ENGLISH only, exactly 120-158 chars. Format: [English product name] by ${brand} – [key features].",
-  "yoastTitle": "ENGLISH only, max 60 chars. Translate Norwegian product name to English. Format: [English name] | ${brand}",
-  "yoastMeta": "ENGLISH only, 120-158 chars. Translate product name to English. Include ${brand} and 1-2 buying arguments.",
-  "focusKeyphrase": "ENGLISH only: English product name + ${brand}, max 4 words.",
-  "keyphraseSynonyms": "6-8 comma-separated variations combining brand and product name in different orders and languages. Must include variations like: '${brand} ${cleanName}', '${cleanName} ${brand}', '${cleanName} from ${brand}', 'buy ${brand} ${cleanName}', English translation + ${brand}, ${brand} + first word of name, last word of name + ${brand}. Mix Norwegian and English.",
-  "tags": "6-12 comma-separated tags for AI chatbot recommendations. ONLY from: STYLE(skandinavisk/minimalistisk/industriell/klassisk/moderne/bohemsk/rustikk/japandi), MATERIAL(tre/metall/messing/kopper/keramikk/glass/tekstil/lin/bomull/ull/rotting/marmor/lær/sandstein), ROOM(stue/soverom/kjøkken/bad/gang/kontor/utendørs/barnerom/spisestue/entre), COLOR(hvit/sort/grå/beige/naturlig/varm/brun/blå/grønn/rosa), PROPERTY(dimbar/håndlaget/vaskemaskinvennlig/allergivennlig/barnesikker/utendørsvennlig/justerbar/sammenleggbar), USE(gave/lesekrok/hyggelig/statement-møbel/lettvekt/plass-effektiv/kontorvennlig). NEVER use: bærekraftig, miljøvennlig, i-serie. Max 12 total. Only obvious matches."
+${jsonFields.join(',\n')}
 }`;
 
     const textRes = await fetch(`${CREDS.proxy}/claude`, {
@@ -960,7 +1040,7 @@ Respond ONLY with valid JSON:
   const imgUrls = images.map(i=>i.src).filter(Boolean);
   let altTexts = ['','',''], imageTitles = ['','',''];
 
-  if(imgUrls.length > 0 && !skipFields.includes('altTexts')){
+  if(imgUrls.length > 0 && sel.has('altTexts')){
     const visionContent = [
       ...imgUrls.slice(0,3).map(url=>({ type:'image', source:{ type:'url', url } })),
       { type:'text', text:`You see ${imgUrls.length} product image(s) of "${cleanName}" by ${brand}.
@@ -1157,9 +1237,20 @@ function filterProduct(p){
   return true;
 }
 function pStatus(pid){
+  if(S.manualDone && S.manualDone.has(pid)) return 'done';
   if(!S.processed.has(pid)) return 'unprocessed';
   const fs=S.fieldStates[pid]||{};
   return Object.values(fs).every(v=>v==='approved'||v==='skipped')?'done':'pending';
+}
+function markProductDone(pid){
+  if(!S.manualDone) S.manualDone=new Set();
+  S.manualDone.add(pid);
+  save(); renderList(); renderMain(); renderStats();
+  showToast('✓ Produkt markert som ferdig','success');
+}
+function unmarkProductDone(pid){
+  if(S.manualDone) S.manualDone.delete(pid);
+  save(); renderList(); renderMain(); renderStats();
 }
 
 /* ── SELECT / RENDER ────────────────────────────── */
@@ -1216,6 +1307,9 @@ function renderMain(){
         <div class="publish-title">Eksporter til WP All Import</div>
         <div class="publish-sub">${app} av ${tot} felt godkjent${app<tot?' – godkjenn felt du vil inkludere i CSV-en.':' – alle felt klare for eksport!'}</div>
       </div>
+      ${pStatus(p.id)==='done'
+        ? `<button class="btn-dryrun" onclick="unmarkProductDone(${p.id})">↩ Angre ferdig</button>`
+        : `<button class="btn-dryrun" onclick="markProductDone(${p.id})" style="color:var(--add-txt);border-color:var(--add-bg)">✓ Merk som ferdig</button>`}
       <button class="btn-dryrun" onclick="previewCSV()">Forhåndsvis CSV</button>
       <button class="btn-publish" ${app>0?'':'disabled'} onclick="exportProductCSV(${p.id})">⬇ Eksporter CSV</button>
     </div>`;
@@ -1588,7 +1682,7 @@ function exportProductCSV(pid) {
   const csv = generateCSVString([pid]);
   const slug = p.name.toLowerCase().replace(/\s+/g, '-');
   downloadCSV(csv, `seo-${slug}.csv`);
-  showToast(`⬇ CSV eksportert for ${p.name}`, 'success');
+  showPostExportModal([pid]);
 }
 
 function exportAllCSV() {
@@ -1600,7 +1694,22 @@ function exportAllCSV() {
   const csv = generateCSVString(eligible.map(p => p.id));
   const date = new Date().toISOString().slice(0,10);
   downloadCSV(csv, `seo-export-${date}.csv`);
-  showToast(`⬇ Eksporterte ${eligible.length} produkter til CSV`, 'success');
+  showPostExportModal(eligible.map(p=>p.id));
+}
+
+function showPostExportModal(pids){
+  const n = pids.length;
+  document.getElementById('batch-title').textContent = '✓ CSV lastet ned';
+  document.getElementById('batch-desc').innerHTML = `
+    <div style="font-size:13.5px;margin-bottom:6px">Vil du markere <strong>${n} produkt${n!==1?'er':''}</strong> som ferdig?</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.5">Dette flyttes til "Ferdig"-listen. Du kan angre per produkt hvis nødvendig.</div>`;
+  document.getElementById('batch-confirm').textContent = '✓ Ja, merk som ferdig';
+  document.getElementById('batch-confirm').onclick = () => {
+    pids.forEach(pid => { if(!S.manualDone) S.manualDone=new Set(); S.manualDone.add(pid); });
+    save(); closeBatch(); renderList(); renderStats();
+    showToast(`✓ ${n} produkt${n!==1?'er':''} markert som ferdig`,'success');
+  };
+  $show('batch-modal');
 }
 
 function previewCSV() {

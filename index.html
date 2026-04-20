@@ -407,7 +407,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
 
 <!-- VERSION FOOTER -->
-<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.16</div>
+<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.17</div>
 
 <!-- KEYBOARD HELP -->
 <div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
@@ -1201,9 +1201,12 @@ function renderList(){
     const fs=S.fieldStates[p.id]||{};
     const app=Object.values(fs).filter(v=>v==='approved').length;
     const tot=Object.keys(fs).length;
-    const badgeHtml = st==='unprocessed'
-      ? `<span class="badge" style="background:var(--border);color:var(--muted)">Ikke behandlet</span>`
-      : `<span class="badge ${st==='done'?'done':'pending'}">${st==='done'?'Ferdig':'Venter'}</span>`;
+    const badgeHtml = st==='done'
+      ? `<button onclick="event.stopPropagation();unmarkProductDone(${p.id})" title="Angre ferdig" style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;background:var(--add-bg);color:var(--add-txt);border:1px solid #B8DFC8;cursor:pointer;white-space:nowrap">Ferdig ✕</button>`
+      : `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0">
+          <span class="badge ${st==='unprocessed'?'':'pending'}" style="${st==='unprocessed'?'background:var(--border);color:var(--muted)':''}">${st==='unprocessed'?'Ikke behandlet':'Venter'}</span>
+          <button onclick="event.stopPropagation();markProductDone(${p.id})" title="Merk som ferdig" style="padding:1px 7px;border-radius:4px;font-size:10px;font-weight:500;background:transparent;color:var(--muted);border:1px solid var(--border);cursor:pointer;white-space:nowrap">✓ ferdig</button>
+        </div>`;
     const li=document.createElement('li');
     li.className='product-item'+(S.activeId===p.id?' active':'');
     li.style.setProperty('--brand-color',bc);

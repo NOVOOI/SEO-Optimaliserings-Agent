@@ -407,7 +407,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
 
 <!-- VERSION FOOTER -->
-<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.18</div>
+<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.19</div>
 
 <!-- KEYBOARD HELP -->
 <div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
@@ -895,21 +895,38 @@ function extractBrand(woo){
 }
 
 function extractDesigner(woo){
-  // Look for designer attribute
+  // 1. Explicit designer attribute – most reliable
   const attrs = woo.attributes || [];
   for(const attr of attrs){
     const n = (attr.name||'').toLowerCase();
-    if(n.includes('designer')||n.includes('formgiver')||n.includes('designer')){
+    if(n==='designer'||n==='formgiver'||n==='pa_designer'||n==='pa_formgiver'){
       const options = Array.isArray(attr.options)?attr.options:[attr.option].filter(Boolean);
-      if(options[0]&&!/^\d+$/.test(options[0])) return options[0];
+      const v = options[0];
+      // Must look like a real person name: 2+ words, not purely numeric, not a brand
+      if(v && !/^\d+$/.test(v) && v.trim().includes(' ') && v.length < 60) return v.trim();
     }
   }
-  // Check tags for known designer names
-  const tagNames = (woo.tags||[]).map(t=>t.name);
-  // Simple heuristic: tag with two capitalized words is likely a designer name
-  for(const tag of tagNames){
-    if(/^[A-ZÆØÅ][a-zæøå]+ [A-ZÆØÅ][a-zæøå]+$/.test(tag)) return tag;
+  // 2. Meta data with designer key
+  const meta = woo.meta_data || [];
+  for(const m of meta){
+    const k = (m.key||'').toLowerCase();
+    if((k==='designer'||k==='_designer'||k==='pa_designer')&&m.value&&typeof m.value==='string'){
+      const v = m.value.trim();
+      if(v && !/^\d+$/.test(v) && v.includes(' ') && v.length < 60) return v;
+    }
   }
+  // 3. Tags: only accept if tag is EXACTLY "Designer: Name" format or a known designer pattern
+  // We do NOT guess from two-word tags – too unreliable
+  const tagNames = (woo.tags||[]).map(t=>t.name);
+  for(const tag of tagNames){
+    const m = tag.match(/^[Dd]esigner:\s*(.+)$/);
+    if(m && m[1].includes(' ')) return m[1].trim();
+  }
+  // 4. Check product description for "Design av/by [Name]" pattern
+  const desc = (woo.description||'').replace(/<[^>]*>/g,' ');
+  const designMatch = desc.match(/[Dd]esign(?:ed)?\s+(?:av|by)\s+([A-ZÆØÅ][a-zæøå]+ [A-ZÆØÅ][a-zæøå]+)/);
+  if(designMatch) return designMatch[1];
+  // Not confident enough – return empty
   return '';
 }
 
@@ -948,7 +965,9 @@ async function fetchVendorEndpoint(path){
   try {
     const res = await fetch(`${CREDS.proxy}${path}`);
     if(!res.ok) return null;
-    const data = await res.json();
+    const ct = res.headers.get('Content-Type')||'';
+    if(!ct.includes('json')) return null; // reject HTML error pages
+    const data = await res.json().catch(()=>null);
     if(!Array.isArray(data)||!data.length) return null;
     const map = {};
     for(const item of data){
@@ -966,7 +985,9 @@ async function fetchTaxonomyTerms(taxonomy){
   try {
     const res = await fetch(`${CREDS.proxy}/wp/v2/${taxonomy}?per_page=100`);
     if(!res.ok) return null;
-    const data = await res.json();
+    const ct = res.headers.get('Content-Type')||'';
+    if(!ct.includes('json')) return null; // reject HTML 404 pages
+    const data = await res.json().catch(()=>null);
     if(!Array.isArray(data)||!data.length) return null;
     const map = {};
     for(const term of data){
@@ -1124,12 +1145,12 @@ async function generateSuggestions(name, currentDesc, currentShort, brand, image
   let parsed = {};
   if(needsText){
     const jsonFields = [];
-    if(sel.has('description'))      jsonFields.push(`  "description": "Norwegian HTML with <p>paragraphs</p> and <ul><li>specs/materials</li></ul>. Min 2 paragraphs of 3-5 sentences.${designerInfo}"`);
-    if(sel.has('shortDescription')) jsonFields.push(`  "shortDescription": "ENGLISH only, exactly 120-158 chars. Format: [English product name]${designer?' by '+designer+' for':' by'} ${brand} – [key features]."`);
-    if(sel.has('yoast'))            jsonFields.push(`  "yoastTitle": "ENGLISH only, max 60 chars. Format: [English name] | ${brand}"`, `  "yoastMeta": "ENGLISH only, 120-158 chars. Include ${brand}${designer?' and '+designer:''} and 1-2 buying arguments."`);
+    if(sel.has('description'))      jsonFields.push(`  "description": "Norwegian HTML. STRICT ACCURACY RULES: Only state facts you can verify from the existing description. Do NOT invent dimensions, materials, weights, or features not mentioned in the source. Do NOT pad with generic filler sentences to reach a minimum length. If little info is available, write a short honest description – 1 paragraph is fine. Format: <p>text</p> optionally followed by <ul><li>only confirmed specs</li></ul>.${designerInfo}"`);
+    if(sel.has('shortDescription')) jsonFields.push(`  "shortDescription": "ENGLISH only, 120-158 chars. Format: [English product name]${designer?' by '+designer+' for':' by'} ${brand} – [only features confirmed in the description]."`);
+    if(sel.has('yoast'))            jsonFields.push(`  "yoastTitle": "ENGLISH only, max 60 chars. Format: [English name] | ${brand}"`, `  "yoastMeta": "ENGLISH only, 120-158 chars. Include ${brand}${designer?' and '+designer:''} and only confirmed product facts."`);
     if(sel.has('keyphrase'))        jsonFields.push(`  "focusKeyphrase": "ENGLISH: English product name + ${brand}, max 4 words."`);
     if(sel.has('synonyms'))         jsonFields.push(`  "keyphraseSynonyms": "6-8 comma-separated variations. Include: '${brand} ${cleanName}', '${cleanName} ${brand}', '${cleanName} from ${brand}', 'buy ${brand} ${cleanName}'${designer?`, '${designer} ${cleanName}', '${cleanName} ${designer}'`:''}, English translation + ${brand}. Mix Norwegian/English."`);
-    if(sel.has('tags'))             jsonFields.push(`  "tags": "6-12 comma-separated tags for AI chatbot. Include brand '${brand}'${designer?' and designer \''+designer+'\'':''}. ONLY from STYLE(skandinavisk/minimalistisk/industriell/klassisk/moderne/bohemsk/rustikk/japandi), MATERIAL(tre/metall/messing/kopper/keramikk/glass/tekstil/lin/bomull/ull/rotting/marmor/lær/sandstein), ROOM(stue/soverom/kjøkken/bad/gang/kontor/utendørs/barnerom/spisestue/entre), COLOR(hvit/sort/grå/beige/naturlig/varm/brun/blå/grønn/rosa), PROPERTY(dimbar/håndlaget/vaskemaskinvennlig/allergivennlig/barnesikker/utendørsvennlig/justerbar/sammenleggbar), USE(gave/lesekrok/hyggelig/statement-møbel/lettvekt/plass-effektiv). NEVER: bærekraftig, miljøvennlig. Max 12."`);
+    if(sel.has('tags'))             jsonFields.push(`  "tags": "6-12 comma-separated tags for AI chatbot. Always include '${brand}' as a tag.${designer?` Always include '${designer}' as a tag.`:''} Then add from: STYLE(skandinavisk/minimalistisk/industriell/klassisk/moderne/bohemsk/rustikk/japandi), MATERIAL(tre/metall/messing/kopper/keramikk/glass/tekstil/lin/bomull/ull/rotting/marmor/lær/sandstein), ROOM(stue/soverom/kjøkken/bad/gang/kontor/utendørs/barnerom/spisestue/entre), COLOR(hvit/sort/grå/beige/naturlig/varm/brun/blå/grønn/rosa), PROPERTY(dimbar/håndlaget/vaskemaskinvennlig/allergivennlig/barnesikker/utendørsvennlig/justerbar/sammenleggbar), USE(gave/lesekrok/hyggelig/statement-møbel/lettvekt/plass-effektiv). NEVER: bærekraftig, miljøvennlig. Only obvious matches. Max 12."`);
 
     const textPrompt = `You are a product text specialist for Novooi – a Norwegian premium interior design store.
 
@@ -1137,10 +1158,14 @@ Product: ${cleanName}${productCode?` (product code: ${productCode} – NOT a bra
 Brand/manufacturer: ${brand}${designer?`\nDesigner: ${designer}`:''}
 Existing description: ${strippedDesc || '(none)'}
 
-RULES:
-- Brand is "${brand}"${designer?` – designer is "${designer}"`:''}. Never replace with category names.
-- "${productCode||''}" is a product code, NOT a brand name.
-- ALL English fields MUST be in English – translate Norwegian product names.
+CRITICAL RULES FOR DESCRIPTIONS:
+- ACCURACY OVER LENGTH. A short correct description is better than a long one with guesses.
+- Only include facts that are stated or clearly implied in the existing description.
+- Do NOT invent or assume: dimensions, materials, weights, finishes, colors, or technical specs.
+- Do NOT write filler sentences to pad length (e.g. "perfect for any home", "timeless design").
+- If the existing description is sparse, write a short honest description. Do not embellish.
+- Brand is "${brand}"${designer?` – designer is "${designer}"`:''}. Never use category names as brand.
+- ALL English fields MUST be in English – translate Norwegian names.
 
 Respond ONLY with valid JSON:
 {

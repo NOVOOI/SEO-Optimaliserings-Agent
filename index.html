@@ -407,7 +407,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
 
 <!-- VERSION FOOTER -->
-<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.17</div>
+<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.18</div>
 
 <!-- KEYBOARD HELP -->
 <div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
@@ -571,6 +571,12 @@ function connectLive(){
 
 async function fetchAndLoad(){
   $show('app'); $hide('config-overlay');
+
+  // ── Step 1: Build vendor/brand lookup map ──────────
+  setLoading(true,'Henter leverandørinformasjon…');
+  await buildVendorMap();
+
+  // ── Step 2: Fetch products ─────────────────────────
   setLoading(true,'Henter produkter fra WooCommerce…');
   try {
     const raw = await fetchWooProducts();
@@ -732,7 +738,7 @@ async function startGenerateBatch(batch){
         setLoading(true,`✦ Genererer forslag for "${p.name}" (${i+1}/${batch.length})…`);
         const suggestions = await generateSuggestions(
           p.name, p.fields.description.current, p.fields.shortDescription.current,
-          p.brand, p.fields.altTexts, S.selectedFields
+          p.brand, p.fields.altTexts, S.selectedFields, p.designer||''
         );
         if(S.selectedFields.has('description'))      p.fields.description.suggested      = suggestions.description      || p.fields.description.current;
         if(S.selectedFields.has('shortDescription')) p.fields.shortDescription.suggested = suggestions.shortDescription || p.fields.shortDescription.current;
@@ -822,12 +828,13 @@ function mapRaw(woo){
     current:img.alt||'', suggested:''
   }));
 
-  const brand = extractBrand(woo);
+  const brand    = extractBrand(woo);
+  const designer = extractDesigner(woo);
 
   return {
     id: woo.id, name: woo.name,
     sku: woo.sku || `WOO-${woo.id}`,
-    icon: guessIcon(woo.name), brand,
+    icon: guessIcon(woo.name), brand, designer,
     thumbUrl: woo.images?.[0]?.src || '',
     fields:{
       description:      {current:woo.description||'',      suggested:''},
@@ -844,22 +851,139 @@ function mapRaw(woo){
 function extractBrand(woo){
   const meta  = woo.meta_data  || [];
   const attrs = woo.attributes || [];
-  // Apply user-defined brand mapping as final override
+
   const rawBrand = (() => {
-    // [original logic returns here]
-    for(const m of meta){ const k=(m.key||'').toLowerCase(); if((k==='_store_name'||k.includes('vendor_name')||k.includes('brand')||k.includes('produsent')||k.includes('leverandor'))&&m.value&&typeof m.value==='string'&&m.value.length>0) return m.value; }
-    for(const attr of attrs){ const n=(attr.name||'').toLowerCase(); if(n.includes('brand')||n.includes('leverandør')||n.includes('produsent')||n.includes('merkevare')||n.includes('designer')){ const v=Array.isArray(attr.options)?attr.options[0]:attr.option; if(v&&!/^\d+$/.test(v)) return v; } }
-    const cats=(woo.categories||[]).map(c=>c.name); const fromCat=detectBrand(cats.join(' '),''); if(fromCat) return fromCat;
-    const tagNames=(woo.tags||[]).map(t=>t.name); const fromTag=detectBrand(tagNames.join(' '),woo.name); if(fromTag) return fromTag;
+    // 1. Check meta for vendor/store ID → look up in VENDOR_MAP
+    for(const m of meta){
+      const k = (m.key||'').toLowerCase();
+      if(k==='_dokan_vendor_id'||k==='_vendor_id'||k==='_store_id'||k.includes('vendor_id')||k.includes('brand_id')){
+        const name = lookupVendorId(m.value);
+        if(name) return name;
+      }
+    }
+    // 2. Check meta for direct store name
+    for(const m of meta){
+      const k = (m.key||'').toLowerCase();
+      if((k==='_store_name'||k.includes('vendor_name')||k.includes('brand_name'))&&m.value&&typeof m.value==='string'&&m.value.length>1&&!/^\d+$/.test(m.value))
+        return m.value;
+    }
+    // 3. Check product attributes (pa_brand, pa_leverandor etc.)
+    for(const attr of attrs){
+      const n = (attr.name||'').toLowerCase();
+      if(n.includes('brand')||n.includes('leverandør')||n.includes('produsent')||n.includes('merkevare')){
+        const options = Array.isArray(attr.options)?attr.options:[attr.option].filter(Boolean);
+        for(const v of options){ if(v&&!/^\d+$/.test(v)){ const lk=lookupVendorId(v); return lk||v; } }
+      }
+    }
+    // 4. Check tags/categories against known brands
+    const cats=(woo.categories||[]).map(c=>c.name);
+    const tagNames=(woo.tags||[]).map(t=>t.name);
+    const fromCat=detectBrand(cats.join(' '),''); if(fromCat) return fromCat;
+    const fromTag=detectBrand(tagNames.join(' '),woo.name); if(fromTag) return fromTag;
+    // 5. SKU prefix map
     const sku=woo.sku||''; const skuPrefix=sku.split('-')[0].toUpperCase();
     const skuBrandMap={'INHOUSE':'InHouse','MUUTO':'Muuto','HAY':'HAY','NORMANN':'Normann Copenhagen','FRITZ':'Fritz Hansen','FERM':'Ferm Living','GUBI':'Gubi','NORTHERN':'Northern','FJORD':'Fjordfiesta','NESJE':'Nesje','NUEN':'Nuen','LK':'LK Hjelle','BOLIA':'Bolia','FOGIA':'Fogia','WOUD':'Woud','HEM':'Hem'};
     if(skuBrandMap[skuPrefix]) return skuBrandMap[skuPrefix];
     if(skuPrefix.length>=3&&!/^\d+$/.test(skuPrefix)) return skuPrefix.charAt(0)+skuPrefix.slice(1).toLowerCase();
-    const genericCats=['møbler','belysning','tekstil','dekor','keramikk','gulvtepper','tepper','stoler','bord','lamper','sofaer'];
+    // 6. Non-generic category fallback
+    const genericCats=['møbler','belysning','tekstil','dekor','keramikk','gulvtepper','tepper','stoler','bord','lamper','sofaer','puter','vaser','servise'];
     for(const c of cats){ if(!genericCats.includes(c.toLowerCase())) return c; }
     return cats[0]||'';
   })();
+
   return applyUserBrandMap(rawBrand);
+}
+
+function extractDesigner(woo){
+  // Look for designer attribute
+  const attrs = woo.attributes || [];
+  for(const attr of attrs){
+    const n = (attr.name||'').toLowerCase();
+    if(n.includes('designer')||n.includes('formgiver')||n.includes('designer')){
+      const options = Array.isArray(attr.options)?attr.options:[attr.option].filter(Boolean);
+      if(options[0]&&!/^\d+$/.test(options[0])) return options[0];
+    }
+  }
+  // Check tags for known designer names
+  const tagNames = (woo.tags||[]).map(t=>t.name);
+  // Simple heuristic: tag with two capitalized words is likely a designer name
+  for(const tag of tagNames){
+    if(/^[A-ZÆØÅ][a-zæøå]+ [A-ZÆØÅ][a-zæøå]+$/.test(tag)) return tag;
+  }
+  return '';
+}
+
+/* ── VENDOR / BRAND LOOKUP MAP ───────────────────── */
+// Maps numeric IDs and slugs → display names
+// e.g. { '42': 'InHouse', 'inhouse': 'InHouse', '17': 'LK Hjelle' }
+let VENDOR_MAP = {};
+
+async function buildVendorMap(){
+  VENDOR_MAP = {};
+
+  // Try multiple endpoints in parallel – use whichever succeeds
+  const tries = await Promise.allSettled([
+    fetchVendorEndpoint('/wc/vendors?per_page=100'),          // WooCommerce Vendors plugin
+    fetchVendorEndpoint('/dokan/v1/stores?per_page=100'),     // Dokan vendors
+    fetchVendorEndpoint('/wc/brands?per_page=100'),           // WooCommerce Brands
+    fetchVendorEndpoint('/wc/product-brands?per_page=100'),   // alt endpoint
+    fetchTaxonomyTerms('pwb-brand'),                          // Perfect Brands plugin
+    fetchTaxonomyTerms('product_brand'),
+    fetchTaxonomyTerms('pa_brand'),
+    fetchTaxonomyTerms('pa_leverandor'),
+    fetchTaxonomyTerms('pa_produsent'),
+  ]);
+
+  let total = 0;
+  for(const r of tries){
+    if(r.status==='fulfilled' && r.value){
+      Object.assign(VENDOR_MAP, r.value);
+      total += Object.keys(r.value).length;
+    }
+  }
+  console.log(`Vendor map built: ${total} entries`, VENDOR_MAP);
+}
+
+async function fetchVendorEndpoint(path){
+  try {
+    const res = await fetch(`${CREDS.proxy}${path}`);
+    if(!res.ok) return null;
+    const data = await res.json();
+    if(!Array.isArray(data)||!data.length) return null;
+    const map = {};
+    for(const item of data){
+      const id   = String(item.id||item.term_id||'');
+      const name = item.store_name || item.name || item.label || '';
+      const slug = item.slug||item.store_slug||'';
+      if(id && name)   map[id]   = name;
+      if(slug && name) map[slug] = name;
+    }
+    return Object.keys(map).length ? map : null;
+  } catch(e){ return null; }
+}
+
+async function fetchTaxonomyTerms(taxonomy){
+  try {
+    const res = await fetch(`${CREDS.proxy}/wp/v2/${taxonomy}?per_page=100`);
+    if(!res.ok) return null;
+    const data = await res.json();
+    if(!Array.isArray(data)||!data.length) return null;
+    const map = {};
+    for(const term of data){
+      const id   = String(term.id||'');
+      const name = term.name||'';
+      const slug = term.slug||'';
+      if(id && name)   map[id]   = name;
+      if(slug && name) map[slug] = name;
+    }
+    return Object.keys(map).length ? map : null;
+  } catch(e){ return null; }
+}
+
+function lookupVendorId(id){
+  if(!id) return null;
+  const sid = String(id);
+  return VENDOR_MAP[sid] || VENDOR_MAP[sid.toLowerCase()] || null;
 }
 
 /* ── WOOCOMMERCE FETCH ──────────────────────────── */
@@ -986,41 +1110,39 @@ function assessQuality(product){
 }
 
 /* ── CLAUDE AI GENERATION ───────────────────────── */
-async function generateSuggestions(name, currentDesc, currentShort, brand, images, selectedFields=null){
+async function generateSuggestions(name, currentDesc, currentShort, brand, images, selectedFields=null, designer=''){
   const sel = selectedFields instanceof Set ? selectedFields : new Set(FKEYS);
   const strippedDesc = currentDesc.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
-
-  // Strip leading numeric product codes (e.g. "1068 Twilight Grønn Teppe" → "Twilight Grønn Teppe")
   const cleanName = name.replace(/^\d+\s+/, '').trim();
   const productCode = name !== cleanName ? name.match(/^(\d+)/)?.[1] : null;
+  const designerInfo = designer ? ` Designed by ${designer}.` : '';
+  const designerTag  = designer ? `, ${designer}` : '';
 
-  // Only request fields that are selected
   const textFields = ['description','shortDescription','yoast','keyphrase','synonyms','tags'].filter(k=>sel.has(k));
   const needsText = textFields.length > 0;
 
   let parsed = {};
   if(needsText){
-    // Build JSON fields dynamically – only request what's selected
     const jsonFields = [];
-    if(sel.has('description'))      jsonFields.push(`  "description": "Norwegian HTML with <p>paragraphs</p> and <ul><li>specs/materials</li></ul>. Min 2 paragraphs of 3-5 sentences."`);
-    if(sel.has('shortDescription')) jsonFields.push(`  "shortDescription": "ENGLISH only, exactly 120-158 chars. Format: [English product name] by ${brand} – [key features]."`);
-    if(sel.has('yoast'))            jsonFields.push(`  "yoastTitle": "ENGLISH only, max 60 chars. Format: [English name] | ${brand}"`, `  "yoastMeta": "ENGLISH only, 120-158 chars. Include ${brand} and 1-2 buying arguments."`);
+    if(sel.has('description'))      jsonFields.push(`  "description": "Norwegian HTML with <p>paragraphs</p> and <ul><li>specs/materials</li></ul>. Min 2 paragraphs of 3-5 sentences.${designerInfo}"`);
+    if(sel.has('shortDescription')) jsonFields.push(`  "shortDescription": "ENGLISH only, exactly 120-158 chars. Format: [English product name]${designer?' by '+designer+' for':' by'} ${brand} – [key features]."`);
+    if(sel.has('yoast'))            jsonFields.push(`  "yoastTitle": "ENGLISH only, max 60 chars. Format: [English name] | ${brand}"`, `  "yoastMeta": "ENGLISH only, 120-158 chars. Include ${brand}${designer?' and '+designer:''} and 1-2 buying arguments."`);
     if(sel.has('keyphrase'))        jsonFields.push(`  "focusKeyphrase": "ENGLISH: English product name + ${brand}, max 4 words."`);
-    if(sel.has('synonyms'))         jsonFields.push(`  "keyphraseSynonyms": "6-8 comma-separated variations: '${brand} ${cleanName}', '${cleanName} ${brand}', '${cleanName} from ${brand}', 'buy ${brand} ${cleanName}', English+${brand}, ${brand}+first word, last word+${brand}. Mix Norwegian/English."`);
-    if(sel.has('tags'))             jsonFields.push(`  "tags": "6-12 comma-separated tags. ONLY from STYLE(skandinavisk/minimalistisk/industriell/klassisk/moderne/bohemsk/rustikk/japandi), MATERIAL(tre/metall/messing/kopper/keramikk/glass/tekstil/lin/bomull/ull/rotting/marmor/lær/sandstein), ROOM(stue/soverom/kjøkken/bad/gang/kontor/utendørs/barnerom/spisestue/entre), COLOR(hvit/sort/grå/beige/naturlig/varm/brun/blå/grønn/rosa), PROPERTY(dimbar/håndlaget/vaskemaskinvennlig/allergivennlig/barnesikker/utendørsvennlig/justerbar/sammenleggbar), USE(gave/lesekrok/hyggelig/statement-møbel/lettvekt/plass-effektiv). NEVER: bærekraftig, miljøvennlig. Max 12."`);
+    if(sel.has('synonyms'))         jsonFields.push(`  "keyphraseSynonyms": "6-8 comma-separated variations. Include: '${brand} ${cleanName}', '${cleanName} ${brand}', '${cleanName} from ${brand}', 'buy ${brand} ${cleanName}'${designer?`, '${designer} ${cleanName}', '${cleanName} ${designer}'`:''}, English translation + ${brand}. Mix Norwegian/English."`);
+    if(sel.has('tags'))             jsonFields.push(`  "tags": "6-12 comma-separated tags for AI chatbot. Include brand '${brand}'${designer?' and designer \''+designer+'\'':''}. ONLY from STYLE(skandinavisk/minimalistisk/industriell/klassisk/moderne/bohemsk/rustikk/japandi), MATERIAL(tre/metall/messing/kopper/keramikk/glass/tekstil/lin/bomull/ull/rotting/marmor/lær/sandstein), ROOM(stue/soverom/kjøkken/bad/gang/kontor/utendørs/barnerom/spisestue/entre), COLOR(hvit/sort/grå/beige/naturlig/varm/brun/blå/grønn/rosa), PROPERTY(dimbar/håndlaget/vaskemaskinvennlig/allergivennlig/barnesikker/utendørsvennlig/justerbar/sammenleggbar), USE(gave/lesekrok/hyggelig/statement-møbel/lettvekt/plass-effektiv). NEVER: bærekraftig, miljøvennlig. Max 12."`);
 
     const textPrompt = `You are a product text specialist for Novooi – a Norwegian premium interior design store.
 
 Product: ${cleanName}${productCode?` (product code: ${productCode} – NOT a brand name)`:''}
-Brand/manufacturer: ${brand}
+Brand/manufacturer: ${brand}${designer?`\nDesigner: ${designer}`:''}
 Existing description: ${strippedDesc || '(none)'}
 
 RULES:
-- Brand name is "${brand}" – use this exactly. NEVER replace with category names.
+- Brand is "${brand}"${designer?` – designer is "${designer}"`:''}. Never replace with category names.
 - "${productCode||''}" is a product code, NOT a brand name.
 - ALL English fields MUST be in English – translate Norwegian product names.
 
-Respond ONLY with valid JSON containing exactly these fields:
+Respond ONLY with valid JSON:
 {
 ${jsonFields.join(',\n')}
 }`;
@@ -1041,19 +1163,20 @@ ${jsonFields.join(',\n')}
   let altTexts = ['','',''], imageTitles = ['','',''];
 
   if(imgUrls.length > 0 && sel.has('altTexts')){
+    const byLine = designer ? ` by ${designer} for ${brand}` : ` by ${brand}`;
     const visionContent = [
       ...imgUrls.slice(0,3).map(url=>({ type:'image', source:{ type:'url', url } })),
-      { type:'text', text:`You see ${imgUrls.length} product image(s) of "${cleanName}" by ${brand}.
+      { type:'text', text:`You see ${imgUrls.length} product image(s) of "${cleanName}"${byLine}.
 
 Describe exactly what is visible in each image. Respond ONLY with JSON:
 {
   "altTexts": ["description image 1", "image 2", "image 3"],
-  "imageTitles": ["${brand} ${cleanName} – description 1", "image 2", "image 3"]
+  "imageTitles": ["${brand} ${cleanName}${designer?' – '+designer:''} – description 1", "image 2", "image 3"]
 }
 RULES:
 - ALWAYS start alt text with "${brand} ${cleanName}" followed by what you see
+- Include "${designer||brand}" in image titles
 - Describe only what is actually visible – never invent environments
-- Example: "${brand} ${cleanName} – close-up of texture and pile"
 - Max 125 chars per alt text` }
     ];
     const altRes = await fetch(`${CREDS.proxy}/claude`, {

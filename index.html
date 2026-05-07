@@ -407,7 +407,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
 
 <!-- VERSION FOOTER -->
-<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.35</div>
+<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.36</div>
 
 <!-- KEYBOARD HELP -->
 <div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
@@ -738,7 +738,7 @@ async function startGenerateBatch(batch){
         const suggestions = await generateSuggestions(
           p.name, p.fields.description.current, p.fields.shortDescription.current,
           p.brand, p.fields.altTexts, S.selectedFields, p.designer||'', p.fields.shipping,
-          p.fields.synonyms.current||''
+          p.fields.synonyms.current||'', p.hasVariations||false
         );
         if(S.selectedFields.has('description'))      p.fields.description.suggested      = suggestions.description      || p.fields.description.current;
         if(S.selectedFields.has('shortDescription')) p.fields.shortDescription.suggested = suggestions.shortDescription || p.fields.shortDescription.current;
@@ -882,6 +882,7 @@ function mapRaw(woo){
     sku: woo.sku || `WOO-${woo.id}`,
     icon: guessIcon(woo.name), brand, designer,
     thumbUrl: woo.images?.[0]?.src || '',
+    hasVariations: woo.type==='variable' || (woo.variations && woo.variations.length > 0) || (woo.attributes||[]).some(a=>a.variation),
     fields:{
       description:      {current:woo.description||'',      suggested:''},
       shortDescription: {current:woo.short_description||'', suggested:''},
@@ -1233,7 +1234,7 @@ function assessQuality(product){
 }
 
 /* ── CLAUDE AI GENERATION ───────────────────────── */
-async function generateSuggestions(name, currentDesc, currentShort, brand, images, selectedFields=null, designer='', currentShipping=null, existingSynonyms=''){
+async function generateSuggestions(name, currentDesc, currentShort, brand, images, selectedFields=null, designer='', currentShipping=null, existingSynonyms='', hasVariations=false){
   const sel = selectedFields instanceof Set ? selectedFields : new Set(FKEYS);
   const strippedDesc = currentDesc.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
   const cleanName = name.replace(/^\d+\s+/, '').trim();
@@ -1247,12 +1248,15 @@ async function generateSuggestions(name, currentDesc, currentShort, brand, image
   let parsed = {};
   if(needsText){
     const jsonFields = [];
+    const mailtoLine = hasVariations
+      ? `\\n<p><a href="mailto:hei@novooi.com">Kontakt oss her for å spesifisere ditt produkt</a></p>`
+      : '';
     const descWordCount = strippedDesc.split(/\s+/).filter(Boolean).length;
     const descIsGood = descWordCount >= 80;
     if(sel.has('description'))      jsonFields.push(`  "description": "${descIsGood
       ? `The existing Norwegian description is already detailed (${descWordCount} words). IMPROVE it rather than replace it. Keep all correct facts. Fix grammar, improve flow, add missing specs only if clearly inferable. Return the improved HTML using <p> and <ul><li> tags. Do NOT shorten it.`
       : `Write a new Norwegian HTML description with <p>paragraphs</p> and optionally <ul><li>confirmed specs</li></ul>. STRICT ACCURACY: only state facts from the existing description. Do not invent details. Short and correct is better than long and wrong.`
-    }${designerInfo}"`);
+    }${designerInfo}${hasVariations ? ` End the description with exactly this HTML on its own line: <p><a href=\\"mailto:hei@novooi.com\\">Kontakt oss her for å spesifisere ditt produkt</a></p>` : ''}"`);
     const brandInName = cleanName.toLowerCase().includes(brand.toLowerCase());
     const titleSuffix = brandInName ? 'Novooi' : brand;
     const shortDescByLine = brandInName

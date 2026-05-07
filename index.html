@@ -407,7 +407,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
 
 <!-- VERSION FOOTER -->
-<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.27</div>
+<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.28</div>
 
 <!-- KEYBOARD HELP -->
 <div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
@@ -825,32 +825,35 @@ function mapRaw(woo){
   const currentYMeta  = yoastMeta.find(m=>m.key==='_yoast_wpseo_metadesc')?.value || '';
   const currentFocus  = yoastMeta.find(m=>m.key==='_yoast_wpseo_focuskw')?.value || '';
 
-  // Yoast stores synonyms in _yoast_wpseo_focuskeywords as JSON
-  // Format: [{"keyword":"...","synonyms":"word1, word2"}] or similar
+  // Yoast Premium stores synonyms in _yoast_wpseo_synsets
+  // Format: {"a8":"syn1, syn2, syn3"} where key is an internal hash
+  // or _yoast_wpseo_focuskeywords: [{"keyword":"...","synonyms":"syn1, syn2"}]
   let currentSynonyms = '';
-  const synMeta = yoastMeta.find(m=>m.key==='_yoast_wpseo_focuskeywords');
-  if(synMeta?.value){
+
+  const synsetsMeta = yoastMeta.find(m=>m.key==='_yoast_wpseo_synsets');
+  if(synsetsMeta?.value){
     try {
-      const parsed = typeof synMeta.value === 'string' ? JSON.parse(synMeta.value) : synMeta.value;
-      if(Array.isArray(parsed)){
-        // Extract synonyms from each keyphrase entry
-        const syns = parsed.flatMap(entry => {
-          if(entry.synonyms) return entry.synonyms.split(',').map(s=>s.trim()).filter(Boolean);
-          if(entry.keyword)  return [entry.keyword];
-          return [];
-        });
-        currentSynonyms = syns.join(', ');
-      } else if(typeof parsed === 'string'){
-        currentSynonyms = parsed;
+      const val = typeof synsetsMeta.value==='string' ? JSON.parse(synsetsMeta.value) : synsetsMeta.value;
+      if(typeof val==='object' && !Array.isArray(val)){
+        // Format: {"a8":"syn1, syn2"} - extract all values
+        currentSynonyms = Object.values(val).join(', ');
+      } else if(typeof val==='string'){
+        currentSynonyms = val;
       }
-    } catch(e){
-      currentSynonyms = String(synMeta.value||'');
-    }
+    } catch(e){ currentSynonyms = String(synsetsMeta.value||''); }
   }
-  // Also check simpler _yoast_wpseo_synsets field
+
   if(!currentSynonyms){
-    const synsets = yoastMeta.find(m=>m.key==='_yoast_wpseo_synsets');
-    if(synsets?.value) currentSynonyms = String(synsets.value);
+    const fkMeta = yoastMeta.find(m=>m.key==='_yoast_wpseo_focuskeywords');
+    if(fkMeta?.value){
+      try {
+        const val = typeof fkMeta.value==='string' ? JSON.parse(fkMeta.value) : fkMeta.value;
+        if(Array.isArray(val)){
+          const syns = val.flatMap(e => e.synonyms ? e.synonyms.split(',').map(s=>s.trim()).filter(Boolean) : []);
+          currentSynonyms = syns.join(', ');
+        }
+      } catch(e){}
+    }
   }
 
   const images = (woo.images||[]).slice(0,3).map(img=>({

@@ -407,7 +407,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
 
 <!-- VERSION FOOTER -->
-<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.26</div>
+<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.27</div>
 
 <!-- KEYBOARD HELP -->
 <div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
@@ -1192,12 +1192,12 @@ async function generateSuggestions(name, currentDesc, currentShort, brand, image
   if(needsText){
     const jsonFields = [];
     if(sel.has('description'))      jsonFields.push(`  "description": "Norwegian HTML. STRICT ACCURACY RULES: Only state facts you can verify from the existing description. Do NOT invent dimensions, materials, weights, or features not mentioned in the source. Do NOT pad with generic filler sentences to reach a minimum length. If little info is available, write a short honest description – 1 paragraph is fine. Format: <p>text</p> optionally followed by <ul><li>only confirmed specs</li></ul>.${designerInfo}"`);
+    const brandInName = cleanName.toLowerCase().includes(brand.toLowerCase());
+    const titleSuffix = brandInName ? 'Novooi' : brand;
     const shortDescByLine = brandInName
       ? (designer ? `by ${designer}` : '')
       : (designer ? `by ${designer} for ${brand}` : `by ${brand}`);
     if(sel.has('shortDescription')) jsonFields.push(`  "shortDescription": "ENGLISH only, 120-158 chars. Format: [English product name]${shortDescByLine ? ' '+shortDescByLine : ''} – [key features confirmed in description]. Do NOT repeat '${brand}' if it is already in the product name."`);
-    const brandInName = cleanName.toLowerCase().includes(brand.toLowerCase());
-    const titleSuffix = brandInName ? 'Novooi' : brand;
     if(sel.has('yoast'))            jsonFields.push(`  "yoastTitle": "ENGLISH only, max 60 chars. Format: [English product name] | ${titleSuffix}. The brand '${brand}' is ${brandInName?'already in':'not in'} the product name, so use '${titleSuffix}' as the suffix. Example result: '${cleanName} | ${titleSuffix}'"`, `  "yoastMeta": "ENGLISH only, 120-158 chars. Include ${brand}${designer?' and '+designer:''} and only confirmed product facts."`);
     if(sel.has('keyphrase'))        jsonFields.push(`  "focusKeyphrase": "ENGLISH: English product name + ${brand}, max 4 words."`);
     if(sel.has('synonyms'))         jsonFields.push(`  "keyphraseSynonyms": "6-8 comma-separated search phrase variations.${existingSynonyms?' Existing synonyms already set: \''+existingSynonyms+'\' – build on these and add new ones, do not repeat them exactly.'  :''} The product name is '${cleanName}' and brand is '${brand}'. IMPORTANT: '${brand}' may already appear in the product name – if so, do NOT add it again as a separate word. Generate natural search variations like people would actually type: '${cleanName}', '${cleanName} kjøp', 'buy ${cleanName}', '${cleanName} Norway'${designer?`, '${designer} ${cleanName}'`:''}. Mix Norwegian and English. Always use exact spelling '${brand}' – never alter the brand name."`);

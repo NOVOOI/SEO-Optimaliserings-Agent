@@ -407,7 +407,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
 
 <!-- VERSION FOOTER -->
-<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.21</div>
+<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.23</div>
 
 <!-- KEYBOARD HELP -->
 <div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
@@ -738,7 +738,8 @@ async function startGenerateBatch(batch){
         setLoading(true,`✦ Genererer forslag for "${p.name}" (${i+1}/${batch.length})…`);
         const suggestions = await generateSuggestions(
           p.name, p.fields.description.current, p.fields.shortDescription.current,
-          p.brand, p.fields.altTexts, S.selectedFields, p.designer||'', p.fields.shipping
+          p.brand, p.fields.altTexts, S.selectedFields, p.designer||'', p.fields.shipping,
+          p.fields.synonyms.current||''
         );
         if(S.selectedFields.has('description'))      p.fields.description.suggested      = suggestions.description      || p.fields.description.current;
         if(S.selectedFields.has('shortDescription')) p.fields.shortDescription.suggested = suggestions.shortDescription || p.fields.shortDescription.current;
@@ -824,6 +825,34 @@ function mapRaw(woo){
   const currentYMeta  = yoastMeta.find(m=>m.key==='_yoast_wpseo_metadesc')?.value || '';
   const currentFocus  = yoastMeta.find(m=>m.key==='_yoast_wpseo_focuskw')?.value || '';
 
+  // Yoast stores synonyms in _yoast_wpseo_focuskeywords as JSON
+  // Format: [{"keyword":"...","synonyms":"word1, word2"}] or similar
+  let currentSynonyms = '';
+  const synMeta = yoastMeta.find(m=>m.key==='_yoast_wpseo_focuskeywords');
+  if(synMeta?.value){
+    try {
+      const parsed = typeof synMeta.value === 'string' ? JSON.parse(synMeta.value) : synMeta.value;
+      if(Array.isArray(parsed)){
+        // Extract synonyms from each keyphrase entry
+        const syns = parsed.flatMap(entry => {
+          if(entry.synonyms) return entry.synonyms.split(',').map(s=>s.trim()).filter(Boolean);
+          if(entry.keyword)  return [entry.keyword];
+          return [];
+        });
+        currentSynonyms = syns.join(', ');
+      } else if(typeof parsed === 'string'){
+        currentSynonyms = parsed;
+      }
+    } catch(e){
+      currentSynonyms = String(synMeta.value||'');
+    }
+  }
+  // Also check simpler _yoast_wpseo_synsets field
+  if(!currentSynonyms){
+    const synsets = yoastMeta.find(m=>m.key==='_yoast_wpseo_synsets');
+    if(synsets?.value) currentSynonyms = String(synsets.value);
+  }
+
   const images = (woo.images||[]).slice(0,3).map(img=>({
     img:'🖼️', filename:img.src?.split('/').pop()||'',
     src: img.src || '',
@@ -857,7 +886,7 @@ function mapRaw(woo){
       yoast:            {currentTitle:currentYTitle, currentMeta:currentYMeta, suggestedTitle:'', suggestedMeta:''},
       altTexts:         images,
       keyphrase:        {current:currentFocus, suggested:''},
-      synonyms:         {current:'', suggested:''},
+      synonyms:         {current:currentSynonyms, suggested:''},
       tags:             {current:(woo.tags||[]).map(t=>t.name).join(', '), suggested:''},
       shipping:         currentShipping,
     }
@@ -898,7 +927,7 @@ function extractBrand(woo){
     const fromTag=detectBrand(tagNames.join(' '),woo.name); if(fromTag) return fromTag;
     // 5. SKU prefix map
     const sku=woo.sku||''; const skuPrefix=sku.split('-')[0].toUpperCase();
-    const skuBrandMap={'INHOUSE':'InHouse','MUUTO':'Muuto','HAY':'HAY','NORMANN':'Normann Copenhagen','FRITZ':'Fritz Hansen','FERM':'Ferm Living','GUBI':'Gubi','NORTHERN':'Northern','FJORD':'Fjordfiesta','NESJE':'Nesje','NUEN':'Nuen','LK':'LK Hjelle','BOLIA':'Bolia','FOGIA':'Fogia','WOUD':'Woud','HEM':'Hem'};
+    const skuBrandMap={'HAG':'HÅG','INHOUSE':'InHouse','MUUTO':'Muuto','HAY':'HAY','NORMANN':'Normann Copenhagen','FRITZ':'Fritz Hansen','FERM':'Ferm Living','GUBI':'Gubi','NORTHERN':'Northern','FJORD':'Fjordfiesta','NESJE':'Nesje','NUEN':'Nuen','LK':'LK Hjelle','BOLIA':'Bolia','FOGIA':'Fogia','WOUD':'Woud','HEM':'Hem','VERPAN':'Verpan','AUDO':'Audo','WOUD':'Woud','BLOMUS':'Blomus'};
     if(skuBrandMap[skuPrefix]) return skuBrandMap[skuPrefix];
     if(skuPrefix.length>=3&&!/^\d+$/.test(skuPrefix)) return skuPrefix.charAt(0)+skuPrefix.slice(1).toLowerCase();
     // 6. Non-generic category fallback
@@ -1109,6 +1138,7 @@ function detectBrand(hint, name){
     'Muuto','HAY','Normann Copenhagen','Fritz Hansen','Menu','Ferm Living',
     '&Tradition','Gubi','Verpan','LK Hjelle','Svensson','Bolia',
     'InHouse','Inhouse','Northern','Fjordfiesta','Nesje','Amokamok',
+    'HÅG','Håg','Hag',
     'Fitjar Islands','All Pine Press','Nuen','Jone Myking','Fogia',
     'Hem','New Works','Audo','Woud','Blomus','House Doctor','Elvang',
     'Marimekko','Iittala','Orrefors','Georg Jensen','Kähler',
@@ -1147,7 +1177,7 @@ function assessQuality(product){
 }
 
 /* ── CLAUDE AI GENERATION ───────────────────────── */
-async function generateSuggestions(name, currentDesc, currentShort, brand, images, selectedFields=null, designer='', currentShipping=null){
+async function generateSuggestions(name, currentDesc, currentShort, brand, images, selectedFields=null, designer='', currentShipping=null, existingSynonyms=''){
   const sel = selectedFields instanceof Set ? selectedFields : new Set(FKEYS);
   const strippedDesc = currentDesc.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
   const cleanName = name.replace(/^\d+\s+/, '').trim();
@@ -1165,7 +1195,7 @@ async function generateSuggestions(name, currentDesc, currentShort, brand, image
     if(sel.has('shortDescription')) jsonFields.push(`  "shortDescription": "ENGLISH only, 120-158 chars. Format: [English product name]${designer?' by '+designer+' for':' by'} ${brand} – [only features confirmed in the description]."`);
     if(sel.has('yoast'))            jsonFields.push(`  "yoastTitle": "ENGLISH only, max 60 chars. Format: [English name] | ${brand}"`, `  "yoastMeta": "ENGLISH only, 120-158 chars. Include ${brand}${designer?' and '+designer:''} and only confirmed product facts."`);
     if(sel.has('keyphrase'))        jsonFields.push(`  "focusKeyphrase": "ENGLISH: English product name + ${brand}, max 4 words."`);
-    if(sel.has('synonyms'))         jsonFields.push(`  "keyphraseSynonyms": "6-8 comma-separated variations. Include: '${brand} ${cleanName}', '${cleanName} ${brand}', '${cleanName} from ${brand}', 'buy ${brand} ${cleanName}'${designer?`, '${designer} ${cleanName}', '${cleanName} ${designer}'`:''}, English translation + ${brand}. Mix Norwegian/English."`);
+    if(sel.has('synonyms'))         jsonFields.push(`  "keyphraseSynonyms": "6-8 comma-separated search phrase variations.${existingSynonyms?' Existing synonyms already set: \''+existingSynonyms+'\' – build on these and add new ones, do not repeat them exactly.'  :''} The product name is '${cleanName}' and brand is '${brand}'. IMPORTANT: '${brand}' may already appear in the product name – if so, do NOT add it again as a separate word. Generate natural search variations like people would actually type: '${cleanName}', '${cleanName} kjøp', 'buy ${cleanName}', '${cleanName} Norway'${designer?`, '${designer} ${cleanName}'`:''}. Mix Norwegian and English. Always use exact spelling '${brand}' – never alter the brand name."`);
     if(sel.has('tags'))             jsonFields.push(`  "tags": "6-12 comma-separated tags for AI chatbot. Always include '${brand}' as a tag.${designer?` Always include '${designer}' as a tag.`:''} Then add from: STYLE(skandinavisk/minimalistisk/industriell/klassisk/moderne/bohemsk/rustikk/japandi), MATERIAL(tre/metall/messing/kopper/keramikk/glass/tekstil/lin/bomull/ull/rotting/marmor/lær/sandstein), ROOM(stue/soverom/kjøkken/bad/gang/kontor/utendørs/barnerom/spisestue/entre), COLOR(hvit/sort/grå/beige/naturlig/varm/brun/blå/grønn/rosa), PROPERTY(dimbar/håndlaget/vaskemaskinvennlig/allergivennlig/barnesikker/utendørsvennlig/justerbar/sammenleggbar), USE(gave/lesekrok/hyggelig/statement-møbel/lettvekt/plass-effektiv). NEVER: bærekraftig, miljøvennlig. Only obvious matches. Max 12."`);
 
     const textPrompt = `You are a product text specialist for Novooi – a Norwegian premium interior design store.
@@ -1632,7 +1662,7 @@ function buildSimpleField(p,key,icon,helpText){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div>
         <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Nåværende</div>
-        <div class="text-display" style="min-height:48px">${f.current||'<em style="color:var(--del-txt)">Tom</em>'}</div>
+        <div class="text-display" style="min-height:48px">${f.current||'<em style="color:var(--border2);font-size:12px">Ikke satt i Yoast ennå</em>'}</div>
       </div>
       <div>
         <div style="font-size:11px;font-weight:600;color:var(--add-txt);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">✦ AI-forslag</div>

@@ -407,7 +407,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
 
 <!-- VERSION FOOTER -->
-<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.30</div>
+<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.35</div>
 
 <!-- KEYBOARD HELP -->
 <div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
@@ -898,23 +898,34 @@ function mapRaw(woo){
 function extractBrand(woo){
   const meta  = woo.meta_data  || [];
   const attrs = woo.attributes || [];
+  const skuPrefix = (woo.sku||'').split('-')[0].toUpperCase();
 
   const rawBrand = (() => {
-    // 1. Check meta for vendor/store ID → look up in VENDOR_MAP
-    for(const m of meta){
-      const k = (m.key||'').toLowerCase();
-      if(k==='_dokan_vendor_id'||k==='_vendor_id'||k==='_store_id'||k.includes('vendor_id')||k.includes('brand_id')){
-        const name = lookupVendorId(m.value);
-        if(name) return name;
-      }
-    }
-    // 2. Check meta for direct store name
-    for(const m of meta){
-      const k = (m.key||'').toLowerCase();
-      if((k==='_store_name'||k.includes('vendor_name')||k.includes('brand_name'))&&m.value&&typeof m.value==='string'&&m.value.length>1&&!/^\d+$/.test(m.value))
-        return m.value;
-    }
-    // 3. Check product attributes (pa_brand, pa_leverandor etc.)
+    // 1. SKU prefix – most reliable on Novooi (SKUs follow BRAND-PRODUCTNAME pattern)
+    const skuBrandMap = {
+      'HAG':'HÅG','INHOUSE':'InHouse','MUUTO':'Muuto','HAY':'HAY',
+      'NORMANN':'Normann Copenhagen','FRITZ':'Fritz Hansen','FERM':'Ferm Living',
+      'GUBI':'Gubi','NORTHERN':'Northern','FJORD':'Fjordfiesta',
+      'NESJE':'Nesje','NUEN':'Nuen','LK':'LK Hjelle','BOLIA':'Bolia',
+      'FOGIA':'Fogia','WOUD':'Woud','HEM':'Hem','VERPAN':'Verpan',
+      'AUDO':'Audo','BLOMUS':'Blomus',
+      // Novooi-specific
+      'NORFAX':'Norfax','ANDTR':'&Tradition','FIAM':'Fiam',
+      'ABATE':'Abate','FLOU':'Flou','LINIE':'Linie Design',
+      'MENU':'Menu','NEWW':'New Works','NORR':'Norr11',
+      'PEDR':'Pedrali','MATER':'Mater','TAKT':'Takt',
+      'SOFTL':'Softline','LAMMH':'Lammhults','LAPAL':'La Palma',
+      'SWED':'Swedese','TRADL':'&Tradition',
+      'HGLASS':'Hadeland Glassverk','HADEL':'Hadeland Glassverk',
+      'HG':'Hadeland Glassverk','HADELAND':'Hadeland Glassverk',
+      'POUL':'Poul Kjærholm','FRITSH':'Fritz Hansen',
+      'LOUIS':'Louis Poulsen','LPOUL':'Louis Poulsen',
+      'ONEC':'One Collection','ONECOLL':'One Collection',
+      'STOKKE':'Stokke','STOKKEAS':'Stokke',
+    };
+    if(skuBrandMap[skuPrefix]) return skuBrandMap[skuPrefix];
+
+    // 2. Product attributes (pa_brand, pa_leverandor etc.)
     for(const attr of attrs){
       const n = (attr.name||'').toLowerCase();
       if(n.includes('brand')||n.includes('leverandør')||n.includes('produsent')||n.includes('merkevare')){
@@ -922,17 +933,29 @@ function extractBrand(woo){
         for(const v of options){ if(v&&!/^\d+$/.test(v)){ const lk=lookupVendorId(v); return lk||v; } }
       }
     }
-    // 4. Check tags/categories against known brands
+    // 3. Meta: direct brand/store name (only if not a number)
+    for(const m of meta){
+      const k = (m.key||'').toLowerCase();
+      if((k==='_store_name'||k.includes('brand_name'))&&m.value&&typeof m.value==='string'&&m.value.length>1&&!/^\d+$/.test(m.value))
+        return m.value;
+    }
+    // 4. Vendor ID lookup – last resort, skip if it looks like the main shop
+    for(const m of meta){
+      const k = (m.key||'').toLowerCase();
+      if(k==='_dokan_vendor_id'||k==='_vendor_id'){
+        const name = lookupVendorId(m.value);
+        if(name && !/novooi/i.test(name)) return name;
+      }
+    }
+    // 5. Known brands in categories/tags
     const cats=(woo.categories||[]).map(c=>c.name);
     const tagNames=(woo.tags||[]).map(t=>t.name);
     const fromCat=detectBrand(cats.join(' '),''); if(fromCat) return fromCat;
     const fromTag=detectBrand(tagNames.join(' '),woo.name); if(fromTag) return fromTag;
-    // 5. SKU prefix map
-    const sku=woo.sku||''; const skuPrefix=sku.split('-')[0].toUpperCase();
-    const skuBrandMap={'HAG':'HÅG','INHOUSE':'InHouse','MUUTO':'Muuto','HAY':'HAY','NORMANN':'Normann Copenhagen','FRITZ':'Fritz Hansen','FERM':'Ferm Living','GUBI':'Gubi','NORTHERN':'Northern','FJORD':'Fjordfiesta','NESJE':'Nesje','NUEN':'Nuen','LK':'LK Hjelle','BOLIA':'Bolia','FOGIA':'Fogia','WOUD':'Woud','HEM':'Hem','VERPAN':'Verpan','AUDO':'Audo','WOUD':'Woud','BLOMUS':'Blomus'};
-    if(skuBrandMap[skuPrefix]) return skuBrandMap[skuPrefix];
-    if(skuPrefix.length>=3&&!/^\d+$/.test(skuPrefix)) return skuPrefix.charAt(0)+skuPrefix.slice(1).toLowerCase();
-    // 6. Non-generic category fallback
+    // 6. SKU prefix as-is (title-case)
+    if(skuPrefix.length>=3&&!/^\d+$/.test(skuPrefix))
+      return skuPrefix.charAt(0)+skuPrefix.slice(1).toLowerCase();
+    // 7. Non-generic category fallback
     const genericCats=['møbler','belysning','tekstil','dekor','keramikk','gulvtepper','tepper','stoler','bord','lamper','sofaer','puter','vaser','servise'];
     for(const c of cats){ if(!genericCats.includes(c.toLowerCase())) return c; }
     return cats[0]||'';
@@ -1136,15 +1159,46 @@ async function mapAndGenerate(woo){
 }
 
 function detectBrand(hint, name){
+  // Full Novooi brand catalogue
   const known = [
+    // Produsenter på Novooi
+    '&Tradition','Abate','Ansten Press','Ask og Eng','Ateljé Lyktan',
+    'Bioregion Institute','Bokhari','DAGGRY','Elementa','ESP',
+    'Fitjar Islands','Fjordfiesta','FjordMoods','Hadeland Glassverk',
+    'HÅG','HandcraftedOSL','Heymat','House of Holmendal','InHouse',
+    'Kjaer + Loege','KÖSK','LK Hjelle','Matre','Mykle','Nedre Foss',
+    'Nesje','Norsol','Northern','Norwegian Icons','NYKR','Pallucco',
+    'Papiret Forlag','Stressless','Svane','Table Noir','Tonning & Stryn',
+    'Varier','Volver','Wik & Walsøe','Ygg&Lyng','Amokamok','All Pine Press',
+    'Nuen','Jone Myking',
+    // Formgivere på Novooi
+    'Alf Sture','Ali Gallefoss','Anderssen & Voll','Andreas Engesvik',
+    'Andreas Siqueland','axel_jenny','Ayla Gürsoy','Bergskog',
+    'Bjersand Sunde','Bjørn-Kowalski Hansen','Brave New Lines','Bruksmann',
+    'demp','Edvard Glazebrook','Edvin Klasson','Elisabeth Kongsrud',
+    'FANG','Flokk & Fjell','Fredrik Bull','Gro Mukta Holter','Gudrun',
+    'Guri Sandvik','Guro Sommer','Gyri Design','Hae Yoon',
+    'Hallgeir Homstvedt','HedSom Jewelry','Helle Lie Jakobsen',
+    'HLIN studio','HØGH','Ida Hagen','Ida Harr','Ida Siebke',
+    'Jenkins & Uhnger','Judith og Ronja','Kaja Dahl','Karen Klim',
+    'Keeep','Kensla Studio','KOGL','Kristine Bjaadal','Kristine Five Melvær',
+    'KUPP Tekstil','Linda Flø','Lunnheim','Mainn med bart','Manuela Hardy',
+    'Marie Viola Fjelde','Marthine Spinnangr','Matthew Fentem','Mia Hamborg',
+    'Mingshu Li','Minus','Morten & Jonas','Naaz Ceramics','Nina Havermans',
+    'NoMy','Nova Felix','OA_M Studio','Ole Brodersen','Oslo Vintage',
+    'Pernille Sandberg','Petersen & Gottelier','Philipp von Hase',
+    'Plesner Patterns','Purpur with Friends','Rasmus Stride','Rom & Tonik',
+    'SHITIKA','Sigrid Rostad','SKAR','Snøhetta','Sol Seok','Son Venïn',
+    'Ståle Johan Aklestad','Stian Korntved Ruud','Stine Aas',
+    'Studio Bille','Studio ESH','STUDIO FriDesign','Sture Design',
+    'TER','The Ocean Weaver','Thelma P. W. Sundby',
+    'Things with a Story TWAS','Tobias Berg','Torsteinsen Design',
+    'TUE + DAM','UVÆR','Vera & Kyte','Vinduet Vintage','YILI',
+    'Ying Chu','YLVAYA Design',
+    // Andre kjente brands som selges på Novooi
     'Muuto','HAY','Normann Copenhagen','Fritz Hansen','Menu','Ferm Living',
-    '&Tradition','Gubi','Verpan','LK Hjelle','Svensson','Bolia',
-    'InHouse','Inhouse','Northern','Fjordfiesta','Nesje','Amokamok',
-    'HÅG','Håg','Hag',
-    'Fitjar Islands','All Pine Press','Nuen','Jone Myking','Fogia',
-    'Hem','New Works','Audo','Woud','Blomus','House Doctor','Elvang',
-    'Marimekko','Iittala','Orrefors','Georg Jensen','Kähler',
-    'Broste Copenhagen','Lyngby Porcelæn','Buster+Punch',
+    'Gubi','Verpan','Bolia','Fogia','Hem','Woud','Audo','New Works',
+    'Norfax','Fiam','Flou','Linie Design','Pallucco',
   ];
   for(const b of known)
     if(hint.toLowerCase().includes(b.toLowerCase())||name.toLowerCase().includes(b.toLowerCase())) return b;
@@ -1193,7 +1247,12 @@ async function generateSuggestions(name, currentDesc, currentShort, brand, image
   let parsed = {};
   if(needsText){
     const jsonFields = [];
-    if(sel.has('description'))      jsonFields.push(`  "description": "Norwegian HTML. STRICT ACCURACY RULES: Only state facts you can verify from the existing description. Do NOT invent dimensions, materials, weights, or features not mentioned in the source. Do NOT pad with generic filler sentences to reach a minimum length. If little info is available, write a short honest description – 1 paragraph is fine. Format: <p>text</p> optionally followed by <ul><li>only confirmed specs</li></ul>.${designerInfo}"`);
+    const descWordCount = strippedDesc.split(/\s+/).filter(Boolean).length;
+    const descIsGood = descWordCount >= 80;
+    if(sel.has('description'))      jsonFields.push(`  "description": "${descIsGood
+      ? `The existing Norwegian description is already detailed (${descWordCount} words). IMPROVE it rather than replace it. Keep all correct facts. Fix grammar, improve flow, add missing specs only if clearly inferable. Return the improved HTML using <p> and <ul><li> tags. Do NOT shorten it.`
+      : `Write a new Norwegian HTML description with <p>paragraphs</p> and optionally <ul><li>confirmed specs</li></ul>. STRICT ACCURACY: only state facts from the existing description. Do not invent details. Short and correct is better than long and wrong.`
+    }${designerInfo}"`);
     const brandInName = cleanName.toLowerCase().includes(brand.toLowerCase());
     const titleSuffix = brandInName ? 'Novooi' : brand;
     const shortDescByLine = brandInName
@@ -1201,24 +1260,20 @@ async function generateSuggestions(name, currentDesc, currentShort, brand, image
       : (designer ? `by ${designer} for ${brand}` : `by ${brand}`);
     if(sel.has('shortDescription')) jsonFields.push(`  "shortDescription": "ENGLISH only, 120-158 chars. Format: [English product name]${shortDescByLine ? ' '+shortDescByLine : ''} – [key features confirmed in description]. Do NOT repeat '${brand}' if it is already in the product name."`);
     if(sel.has('yoast'))            jsonFields.push(`  "yoastTitle": "ENGLISH only, max 60 chars. Format: [English product name] | ${titleSuffix}. The brand '${brand}' is ${brandInName?'already in':'not in'} the product name, so use '${titleSuffix}' as the suffix. Example result: '${cleanName} | ${titleSuffix}'"`, `  "yoastMeta": "ENGLISH only, 120-158 chars. Include ${brand}${designer?' and '+designer:''} and only confirmed product facts."`);
-    if(sel.has('keyphrase'))        jsonFields.push(`  "focusKeyphrase": "ENGLISH: English product name + ${brand}, max 4 words."`);
+    if(sel.has('keyphrase'))        jsonFields.push(`  "focusKeyphrase": "ENGLISH: Use the English product name as focus keyphrase (max 4 words). Only add brand if the product name alone is too generic (e.g. just 'Chair', 'Lamp', 'Table'). Examples: 'Grab Watering Can', 'HÅG SoFi 7500', 'Leaf Wall Lamp'."`);
     if(sel.has('synonyms'))         jsonFields.push(`  "keyphraseSynonyms": "6-8 comma-separated search phrase variations.${existingSynonyms?' Existing synonyms already set: \''+existingSynonyms+'\' – build on these and add new ones, do not repeat them exactly.'  :''} The product name is '${cleanName}' and brand is '${brand}'. IMPORTANT: '${brand}' may already appear in the product name – if so, do NOT add it again as a separate word. Generate natural search variations like people would actually type: '${cleanName}', '${cleanName} kjøp', 'buy ${cleanName}', '${cleanName} Norway'${designer?`, '${designer} ${cleanName}'`:''}. Mix Norwegian and English. Always use exact spelling '${brand}' – never alter the brand name."`);
-    if(sel.has('tags'))             jsonFields.push(`  "tags": "6-12 comma-separated tags for AI chatbot. Always include '${brand}' as a tag.${designer?` Always include '${designer}' as a tag.`:''} Then add from: STYLE(skandinavisk/minimalistisk/industriell/klassisk/moderne/bohemsk/rustikk/japandi), MATERIAL(tre/metall/messing/kopper/keramikk/glass/tekstil/lin/bomull/ull/rotting/marmor/lær/sandstein), ROOM(stue/soverom/kjøkken/bad/gang/kontor/utendørs/barnerom/spisestue/entre), COLOR(hvit/sort/grå/beige/naturlig/varm/brun/blå/grønn/rosa), PROPERTY(dimbar/håndlaget/vaskemaskinvennlig/allergivennlig/barnesikker/utendørsvennlig/justerbar/sammenleggbar), USE(gave/lesekrok/hyggelig/statement-møbel/lettvekt/plass-effektiv). NEVER: bærekraftig, miljøvennlig. Only obvious matches. Max 12."`);
+    if(sel.has('tags'))             jsonFields.push('  "tags": "8-15 comma-separated tags for AI chatbot. Always include \'' + brand + '\' as a tag.' + (designer ? ' Always include \'' + designer + '\' as a tag.' : '') + ' Add all relevant tags from: STYLE(skandinavisk/minimalistisk/industriell/klassisk/moderne/bohemsk/rustikk/japandi/retro), MATERIAL(tre/metall/messing/kopper/keramikk/glass/tekstil/lin/bomull/ull/rotting/marmor/lær/sandstein/stål/aluminium), ROOM(stue/soverom/kjøkken/bad/gang/kontor/utendørs/barnerom/spisestue/entre), COLOR(hvit/sort/grå/beige/naturlig/varm/brun/blå/grønn/rosa/gul/rød/lilla), PROPERTY(dimbar/håndlaget/vaskemaskinvennlig/allergivennlig/barnesikker/utendørsvennlig/justerbar/sammenleggbar/stapelbar/lett/robust), USE(gave/lesekrok/hyggelig/statement-møbel/lettvekt/plass-effektiv/kontorvennlig/dekorativ/funksjonell). NEVER: bærekraftig, miljøvennlig. Only include tags clearly correct for this product."');
 
     const textPrompt = `You are a product text specialist for Novooi – a Norwegian premium interior design store.
 
 Product: ${cleanName}${productCode?` (product code: ${productCode} – NOT a brand name)`:''}
 Brand/manufacturer: ${brand}${designer?`\nDesigner: ${designer}`:''}
-Existing description: ${strippedDesc || '(none)'}
+Existing description (${descWordCount} words): ${strippedDesc || '(none)'}
 
-CRITICAL RULES FOR DESCRIPTIONS:
-- ACCURACY OVER LENGTH. A short correct description is better than a long one with guesses.
-- Only include facts that are stated or clearly implied in the existing description.
-- Do NOT invent or assume: dimensions, materials, weights, finishes, colors, or technical specs.
-- Do NOT write filler sentences to pad length (e.g. "perfect for any home", "timeless design").
-- If the existing description is sparse, write a short honest description. Do not embellish.
+CRITICAL RULES:
 - Brand is "${brand}"${designer?` – designer is "${designer}"`:''}. Never use category names as brand.
 - ALL English fields MUST be in English – translate Norwegian names.
+${descIsGood ? `- The existing description is already detailed. IMPROVE it, do not replace it.` : `- ACCURACY OVER LENGTH. Short and correct beats long and wrong. Never invent specs.`}
 
 Respond ONLY with valid JSON:
 {
@@ -1241,7 +1296,12 @@ ${jsonFields.join(',\n')}
   let altTexts = ['','',''], imageTitles = ['','',''];
 
   if(imgUrls.length > 0 && sel.has('altTexts')){
-    const byLine = designer ? ` by ${designer} for ${brand}` : ` by ${brand}`;
+    const brandInNameV = cleanName.toLowerCase().includes(brand.toLowerCase());
+    const altPrefix  = brandInNameV ? cleanName : `${brand} ${cleanName}`;
+    const titlePrefix = brandInNameV ? cleanName : `${brand} ${cleanName}`;
+    const byLine = brandInNameV
+      ? (designer ? ` by ${designer}` : '')
+      : (designer ? ` by ${designer} for ${brand}` : ` by ${brand}`);
     const visionContent = [
       ...imgUrls.slice(0,3).map(url=>({ type:'image', source:{ type:'url', url } })),
       { type:'text', text:`You see ${imgUrls.length} product image(s) of "${cleanName}"${byLine}.
@@ -1249,11 +1309,10 @@ ${jsonFields.join(',\n')}
 Describe exactly what is visible in each image. Respond ONLY with JSON:
 {
   "altTexts": ["description image 1", "image 2", "image 3"],
-  "imageTitles": ["${brand} ${cleanName}${designer?' – '+designer:''} – description 1", "image 2", "image 3"]
+  "imageTitles": ["${titlePrefix}${designer?' – '+designer:''} – description 1", "image 2", "image 3"]
 }
 RULES:
-- ALWAYS start alt text with "${brand} ${cleanName}" followed by what you see
-- Include "${designer||brand}" in image titles
+- ALWAYS start alt text with "${altPrefix}" followed by what you see – do NOT repeat the brand name twice
 - Describe only what is actually visible – never invent environments
 - Max 125 chars per alt text` }
     ];
@@ -2026,6 +2085,7 @@ function downloadCSV(content, filename) {
 }
 
 function exportProductCSV(pid) {
+  if(pStatus(pid)==='done'){ showToast('Produktet er allerede ferdig – flytt det til Venter for å eksportere på nytt','warn'); return; }
   const p = S.products.find(x => x.id === pid);
   const fs = S.fieldStates[pid] || {};
   const approved = Object.values(fs).filter(v => v === 'approved').length;
@@ -2038,10 +2098,11 @@ function exportProductCSV(pid) {
 
 function exportAllCSV() {
   const eligible = S.products.filter(p => {
+    if(pStatus(p.id)==='done') return false; // skip done products
     const fs = S.fieldStates[p.id] || {};
     return Object.values(fs).some(v => v === 'approved');
   });
-  if (!eligible.length) { showToast('Ingen godkjente felt å eksportere ennå'); return; }
+  if (!eligible.length) { showToast('Ingen produkter under Venter med godkjente felt'); return; }
   const csv = generateCSVString(eligible.map(p => p.id));
   const date = new Date().toISOString().slice(0,10);
   downloadCSV(csv, `seo-export-${date}.csv`);
@@ -2050,17 +2111,10 @@ function exportAllCSV() {
 
 function showPostExportModal(pids){
   const n = pids.length;
-  document.getElementById('batch-title').textContent = '✓ CSV lastet ned';
-  document.getElementById('batch-desc').innerHTML = `
-    <div style="font-size:13.5px;margin-bottom:6px">Vil du markere <strong>${n} produkt${n!==1?'er':''}</strong> som ferdig?</div>
-    <div style="font-size:12px;color:var(--muted);line-height:1.5">Dette flyttes til "Ferdig"-listen. Du kan angre per produkt hvis nødvendig.</div>`;
-  document.getElementById('batch-confirm').textContent = '✓ Ja, merk som ferdig';
-  document.getElementById('batch-confirm').onclick = () => {
-    pids.forEach(pid => { if(!S.manualDone) S.manualDone=new Set(); S.manualDone.add(pid); });
-    save(); closeBatch(); renderList(); renderStats();
-    showToast(`✓ ${n} produkt${n!==1?'er':''} markert som ferdig`,'success');
-  };
-  $show('batch-modal');
+  // Auto-mark as done immediately
+  pids.forEach(pid => { if(!S.manualDone) S.manualDone=new Set(); S.manualDone.add(pid); });
+  save(); renderList(); renderStats();
+  showToast(`⬇ CSV eksportert – ${n} produkt${n!==1?'er':''} flyttet til Ferdig`, 'success');
 }
 
 function previewCSV() {

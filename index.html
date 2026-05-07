@@ -407,7 +407,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
 
 <!-- VERSION FOOTER -->
-<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.23</div>
+<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.26</div>
 
 <!-- KEYBOARD HELP -->
 <div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
@@ -1192,8 +1192,13 @@ async function generateSuggestions(name, currentDesc, currentShort, brand, image
   if(needsText){
     const jsonFields = [];
     if(sel.has('description'))      jsonFields.push(`  "description": "Norwegian HTML. STRICT ACCURACY RULES: Only state facts you can verify from the existing description. Do NOT invent dimensions, materials, weights, or features not mentioned in the source. Do NOT pad with generic filler sentences to reach a minimum length. If little info is available, write a short honest description – 1 paragraph is fine. Format: <p>text</p> optionally followed by <ul><li>only confirmed specs</li></ul>.${designerInfo}"`);
-    if(sel.has('shortDescription')) jsonFields.push(`  "shortDescription": "ENGLISH only, 120-158 chars. Format: [English product name]${designer?' by '+designer+' for':' by'} ${brand} – [only features confirmed in the description]."`);
-    if(sel.has('yoast'))            jsonFields.push(`  "yoastTitle": "ENGLISH only, max 60 chars. Format: [English name] | ${brand}"`, `  "yoastMeta": "ENGLISH only, 120-158 chars. Include ${brand}${designer?' and '+designer:''} and only confirmed product facts."`);
+    const shortDescByLine = brandInName
+      ? (designer ? `by ${designer}` : '')
+      : (designer ? `by ${designer} for ${brand}` : `by ${brand}`);
+    if(sel.has('shortDescription')) jsonFields.push(`  "shortDescription": "ENGLISH only, 120-158 chars. Format: [English product name]${shortDescByLine ? ' '+shortDescByLine : ''} – [key features confirmed in description]. Do NOT repeat '${brand}' if it is already in the product name."`);
+    const brandInName = cleanName.toLowerCase().includes(brand.toLowerCase());
+    const titleSuffix = brandInName ? 'Novooi' : brand;
+    if(sel.has('yoast'))            jsonFields.push(`  "yoastTitle": "ENGLISH only, max 60 chars. Format: [English product name] | ${titleSuffix}. The brand '${brand}' is ${brandInName?'already in':'not in'} the product name, so use '${titleSuffix}' as the suffix. Example result: '${cleanName} | ${titleSuffix}'"`, `  "yoastMeta": "ENGLISH only, 120-158 chars. Include ${brand}${designer?' and '+designer:''} and only confirmed product facts."`);
     if(sel.has('keyphrase'))        jsonFields.push(`  "focusKeyphrase": "ENGLISH: English product name + ${brand}, max 4 words."`);
     if(sel.has('synonyms'))         jsonFields.push(`  "keyphraseSynonyms": "6-8 comma-separated search phrase variations.${existingSynonyms?' Existing synonyms already set: \''+existingSynonyms+'\' – build on these and add new ones, do not repeat them exactly.'  :''} The product name is '${cleanName}' and brand is '${brand}'. IMPORTANT: '${brand}' may already appear in the product name – if so, do NOT add it again as a separate word. Generate natural search variations like people would actually type: '${cleanName}', '${cleanName} kjøp', 'buy ${cleanName}', '${cleanName} Norway'${designer?`, '${designer} ${cleanName}'`:''}. Mix Norwegian and English. Always use exact spelling '${brand}' – never alter the brand name."`);
     if(sel.has('tags'))             jsonFields.push(`  "tags": "6-12 comma-separated tags for AI chatbot. Always include '${brand}' as a tag.${designer?` Always include '${designer}' as a tag.`:''} Then add from: STYLE(skandinavisk/minimalistisk/industriell/klassisk/moderne/bohemsk/rustikk/japandi), MATERIAL(tre/metall/messing/kopper/keramikk/glass/tekstil/lin/bomull/ull/rotting/marmor/lær/sandstein), ROOM(stue/soverom/kjøkken/bad/gang/kontor/utendørs/barnerom/spisestue/entre), COLOR(hvit/sort/grå/beige/naturlig/varm/brun/blå/grønn/rosa), PROPERTY(dimbar/håndlaget/vaskemaskinvennlig/allergivennlig/barnesikker/utendørsvennlig/justerbar/sammenleggbar), USE(gave/lesekrok/hyggelig/statement-møbel/lettvekt/plass-effektiv). NEVER: bærekraftig, miljøvennlig. Only obvious matches. Max 12."`);
@@ -1285,8 +1290,9 @@ RULES:
 
 /* ── SHIPPING DIMENSIONS AI ─────────────────────── */
 async function generateShippingDims(name, description, imageUrl, current){
+  const c = current || {};
   const cleanName = name.replace(/^\d+\s+/,'').trim();
-  const existing = `Nåværende mål – lengde: ${current.length||'ukjent'} cm, bredde: ${current.width||'ukjent'} cm, høyde: ${current.height||'ukjent'} cm, vekt: ${current.weight||'ukjent'} kg`;
+  const existing = `Nåværende mål – lengde: ${c.length||'ukjent'} cm, bredde: ${c.width||'ukjent'} cm, høyde: ${c.height||'ukjent'} cm, vekt: ${c.weight||'ukjent'} kg`;
   const descText = description.slice(0,600);
 
   // Detect product type for packaging logic
@@ -1356,10 +1362,10 @@ Svar KUN med gyldig JSON:
       pkgHeight:  parsed.pkgHeight      || '',
       pkgWeight:  parsed.pkgWeight      || '',
       // Also update product dims if missing
-      length:     current.length        || parsed.productLength || '',
-      width:      current.width         || parsed.productWidth  || '',
-      height:     current.height        || parsed.productHeight || '',
-      weight:     current.weight        || parsed.productWeight || '',
+      length:     c.length        || parsed.productLength || '',
+      width:      c.width         || parsed.productWidth  || '',
+      height:     c.height        || parsed.productHeight || '',
+      weight:     c.weight        || parsed.productWeight || '',
       isEstimate: !!parsed.isEstimate,
       missingFields: parsed.missingFields || [],
       notes:      parsed.notes          || '',
@@ -1693,9 +1699,9 @@ function buildTagsField(p){
 }
 
 function buildShippingField(p){
-  const s = p.fields.shipping;
+  const s = p.fields.shipping || {};
   const state = S.fieldStates[p.id]?.shipping||'pending';
-  const hasData = s.pkgLength || s.pkgWidth || s.pkgHeight || s.pkgWeight;
+  const hasData = !!(s.pkgLength || s.pkgWidth || s.pkgHeight || s.pkgWeight);
   const missing = s.missingFields || [];
 
   const dim = (label,val,unit='cm')=>`

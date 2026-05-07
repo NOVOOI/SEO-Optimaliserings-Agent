@@ -407,7 +407,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
 
 <!-- VERSION FOOTER -->
-<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.19</div>
+<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.20</div>
 
 <!-- KEYBOARD HELP -->
 <div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
@@ -470,8 +470,8 @@ const BRANDS = {
   '&HAY':{'color':'#6B4DA0','light':'#EDE9FE'},
   'Fritz Hansen':{'color':'#1A3A5C','light':'#E6F1FB'},
 };
-const FLABELS = {description:'Produktbeskrivelse',shortDescription:'Kort beskrivelse',yoast:'Yoast SEO',altTexts:'Alt-tekster',keyphrase:'Focus Keyphrase',synonyms:'Keyphrase synonyms',tags:'Produkttagger'};
-const FKEYS = ['description','shortDescription','yoast','altTexts','keyphrase','synonyms','tags'];
+const FLABELS = {description:'Produktbeskrivelse',shortDescription:'Kort beskrivelse',yoast:'Yoast SEO',altTexts:'Alt-tekster',keyphrase:'Focus Keyphrase',synonyms:'Keyphrase synonyms',tags:'Produkttagger',shipping:'Frakt & mål'};
+const FKEYS = ['description','shortDescription','yoast','altTexts','keyphrase','synonyms','tags','shipping'];
 
 /* ── DEMO DATA ─────────────────────────────────── */
 const DEMO = [
@@ -533,7 +533,7 @@ const S={products:[],activeId:null,fieldStates:{},undoStack:[],changelog:[],open
 function loadDemo(){
   S.products=JSON.parse(JSON.stringify(DEMO));
   S.products.forEach(p=>{
-    S.fieldStates[p.id]={description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending',keyphrase:'pending',synonyms:'pending',tags:'pending'};
+    S.fieldStates[p.id]={description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending',keyphrase:'pending',synonyms:'pending',tags:'pending',shipping:'pending'};
     S.openFields[p.id]={};
   });
   loadFromStorage();
@@ -587,7 +587,7 @@ async function fetchAndLoad(){
     for(const p of raw){
       const mapped = mapRaw(p);
       S.products.push(mapped);
-      S.fieldStates[mapped.id]={description:'unprocessed',shortDescription:'unprocessed',yoast:'unprocessed',altTexts:'unprocessed',keyphrase:'unprocessed',synonyms:'unprocessed',tags:'unprocessed'};
+      S.fieldStates[mapped.id]={description:'unprocessed',shortDescription:'unprocessed',yoast:'unprocessed',altTexts:'unprocessed',keyphrase:'unprocessed',synonyms:'unprocessed',tags:'unprocessed',shipping:'unprocessed'};
       S.openFields[mapped.id]={};
     }
 
@@ -635,9 +635,9 @@ function checkExistingQuality(p){
 }
 
 /* ── FIELD SELECTION + COST ESTIMATE MODAL ────────── */
-const FIELD_COST = { // approximate tokens per field (input+output combined * price)
+const FIELD_COST = {
   description:0.0035, shortDescription:0.0015, yoast:0.0020,
-  altTexts:0.0025, keyphrase:0.0008, synonyms:0.0008, tags:0.0010
+  altTexts:0.0025, keyphrase:0.0008, synonyms:0.0008, tags:0.0010, shipping:0.0018
 };
 const VISION_COST_PER_IMG = 0.0008;
 
@@ -738,7 +738,7 @@ async function startGenerateBatch(batch){
         setLoading(true,`✦ Genererer forslag for "${p.name}" (${i+1}/${batch.length})…`);
         const suggestions = await generateSuggestions(
           p.name, p.fields.description.current, p.fields.shortDescription.current,
-          p.brand, p.fields.altTexts, S.selectedFields, p.designer||''
+          p.brand, p.fields.altTexts, S.selectedFields, p.designer||'', p.fields.shipping
         );
         if(S.selectedFields.has('description'))      p.fields.description.suggested      = suggestions.description      || p.fields.description.current;
         if(S.selectedFields.has('shortDescription')) p.fields.shortDescription.suggested = suggestions.shortDescription || p.fields.shortDescription.current;
@@ -747,6 +747,9 @@ async function startGenerateBatch(batch){
         if(S.selectedFields.has('synonyms'))   p.fields.synonyms.suggested  = suggestions.keyphraseSynonyms;
         if(S.selectedFields.has('tags'))       p.fields.tags.suggested       = suggestions.tags;
         if(S.selectedFields.has('altTexts'))   p.fields.altTexts.forEach((img,idx)=>{ img.suggested=suggestions.altTexts[idx]||''; img.suggestedTitle=suggestions.imageTitles[idx]||''; });
+        if(S.selectedFields.has('shipping') && suggestions.shippingResult){
+          Object.assign(p.fields.shipping, suggestions.shippingResult);
+        }
         generated++;
       }
       S.processed.add(p.id);
@@ -831,6 +834,18 @@ function mapRaw(woo){
   const brand    = extractBrand(woo);
   const designer = extractDesigner(woo);
 
+  // Extract existing WooCommerce dimensions + weight
+  const dims = woo.dimensions || {};
+  const currentShipping = {
+    weight:      woo.weight        || '',
+    length:      dims.length       || '',
+    width:       dims.width        || '',
+    height:      dims.height       || '',
+    // Suggested package dimensions (to be filled by AI)
+    pkgWeight:   '', pkgLength: '', pkgWidth: '', pkgHeight: '',
+    notes: '', isEstimate: false,
+  };
+
   return {
     id: woo.id, name: woo.name,
     sku: woo.sku || `WOO-${woo.id}`,
@@ -844,6 +859,7 @@ function mapRaw(woo){
       keyphrase:        {current:currentFocus, suggested:''},
       synonyms:         {current:'', suggested:''},
       tags:             {current:(woo.tags||[]).map(t=>t.name).join(', '), suggested:''},
+      shipping:         currentShipping,
     }
   };
 }
@@ -1131,7 +1147,7 @@ function assessQuality(product){
 }
 
 /* ── CLAUDE AI GENERATION ───────────────────────── */
-async function generateSuggestions(name, currentDesc, currentShort, brand, images, selectedFields=null, designer=''){
+async function generateSuggestions(name, currentDesc, currentShort, brand, images, selectedFields=null, designer='', currentShipping=null){
   const sel = selectedFields instanceof Set ? selectedFields : new Set(FKEYS);
   const strippedDesc = currentDesc.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
   const cleanName = name.replace(/^\d+\s+/, '').trim();
@@ -1219,6 +1235,12 @@ RULES:
     }
   }
 
+  // ── Shipping dimensions ───────────────────────────
+  let shippingResult = null;
+  if(sel.has('shipping')){
+    shippingResult = await generateShippingDims(name, strippedDesc, images[0]?.src||'', currentShipping);
+  }
+
   return {
     description:       parsed.description       || '',
     shortDescription:  parsed.shortDescription  || '',
@@ -1227,8 +1249,92 @@ RULES:
     focusKeyphrase:    parsed.focusKeyphrase      || cleanName,
     keyphraseSynonyms: parsed.keyphraseSynonyms  || '',
     tags:              parsed.tags               || '',
-    altTexts, imageTitles,
+    altTexts, imageTitles, shippingResult,
   };
+}
+
+/* ── SHIPPING DIMENSIONS AI ─────────────────────── */
+async function generateShippingDims(name, description, imageUrl, current){
+  const cleanName = name.replace(/^\d+\s+/,'').trim();
+  const existing = `Nåværende mål – lengde: ${current.length||'ukjent'} cm, bredde: ${current.width||'ukjent'} cm, høyde: ${current.height||'ukjent'} cm, vekt: ${current.weight||'ukjent'} kg`;
+  const descText = description.slice(0,600);
+
+  // Detect product type for packaging logic
+  const nameLower = cleanName.toLowerCase();
+  const isRug     = /teppe|rug|gulvteppe/.test(nameLower);
+  const isLamp    = /lampe|lamp|pendel|vegglampe/.test(nameLower);
+  const isChair   = /stol|chair|lenestol|armchair/.test(nameLower);
+  const isSofa    = /sofa|sofa/.test(nameLower);
+  const isTable   = /bord|table/.test(nameLower);
+  const isVase    = /vase|krukke/.test(nameLower);
+  const isCushion = /pute|cushion|pillow/.test(nameLower);
+
+  let packagingHint = '';
+  if(isRug)     packagingHint = 'Tepper rulles normalt sammen. Pakkebredde = teppebredde, pakkelengde = teppebredde/3 ca, pakkelengde = teppelengde. Eksempel: 160x230 teppe → pakke ca 40x230x40 cm.';
+  if(isLamp)    packagingHint = 'Lamper pakkes i eske med litt ekstra plass. Legg til ca 5-10cm på alle sider av produktmålene.';
+  if(isChair)   packagingHint = 'Stoler pakkes gjerne demontert. Estimér pakkehøyde som 60-70% av totalhøyde, bredde og dybde som produktmål + 5cm.';
+  if(isSofa)    packagingHint = 'Sofaer leveres vanligvis i deler. Estimer pakke per del.';
+  if(isTable)   packagingHint = 'Bord leveres demontert. Ben i egen eske. Bordplate: lengde og bredde som produktmål + 5cm, høyde = tykkelse på plate + emballasje.';
+  if(isVase||isCushion) packagingHint = 'Pakkes med ca 5cm ekstra rundt produktet på alle sider.';
+
+  const prompt = `Du er en logistikkspesialist for en norsk nettbutikk som sender møbler og interiørprodukter.
+
+Produkt: ${cleanName}
+${existing}
+Beskrivelse: ${descText||'(ingen)'}
+${packagingHint?`\nPakkingslogikk: ${packagingHint}`:''}
+
+Oppgave:
+1. Vurder om nåværende produktmål (lengde/bredde/høyde/vekt) er komplette og realistiske.
+2. Estimer manglende produktmål basert på produkttype og beskrivelse.
+3. Beregn PAKKEMÅL – mål på selve pakken/esken slik den faktisk sendes. Dette er ofte annerledes enn produktmål.
+4. Estimer pakkevekt inkl. emballasje.
+
+REGLER:
+- Hvis du er usikker på et mål, gi et rimelig estimat og merk det som estimat.
+- Alle mål i cm, vekt i kg.
+- Pakkemål kan avvike mye fra produktmål (rull, demontering, komprimering).
+
+Svar KUN med gyldig JSON:
+{
+  "productLength": "tall i cm eller tom streng hvis ukjent",
+  "productWidth":  "tall i cm eller tom streng",
+  "productHeight": "tall i cm eller tom streng",
+  "productWeight": "tall i kg eller tom streng",
+  "pkgLength":     "tall i cm",
+  "pkgWidth":      "tall i cm",
+  "pkgHeight":     "tall i cm",
+  "pkgWeight":     "tall i kg",
+  "isEstimate":    true/false,
+  "missingFields": ["liste med feltnavn som manglet og ble estimert"],
+  "notes":         "Kort forklaring på pakkemetode og eventuelle estimater"
+}`;
+
+  try {
+    const res = await fetch(`${CREDS.proxy}/claude`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:500,
+        messages:[{role:'user',content:prompt}] })
+    });
+    if(!res.ok) return null;
+    const data = await res.json();
+    const raw = data.content?.[0]?.text||'{}';
+    const parsed = JSON.parse(raw.replace(/```json|```/g,'').trim());
+    return {
+      pkgLength:  parsed.pkgLength      || '',
+      pkgWidth:   parsed.pkgWidth       || '',
+      pkgHeight:  parsed.pkgHeight      || '',
+      pkgWeight:  parsed.pkgWeight      || '',
+      // Also update product dims if missing
+      length:     current.length        || parsed.productLength || '',
+      width:      current.width         || parsed.productWidth  || '',
+      height:     current.height        || parsed.productHeight || '',
+      weight:     current.weight        || parsed.productWeight || '',
+      isEstimate: !!parsed.isEstimate,
+      missingFields: parsed.missingFields || [],
+      notes:      parsed.notes          || '',
+    };
+  } catch(e){ console.warn('Shipping dims failed', e); return null; }
 }
 
 /* ── BRAND MAPPING ──────────────────────────────── */
@@ -1481,6 +1587,7 @@ function buildCardByKey(key,p,fs){
   if(key==='keyphrase')return buildCard(key,'🎯','Focus Keyphrase','Primært søkeord for Yoast',p,fs);
   if(key==='synonyms')return buildCard(key,'🔗','Keyphrase synonyms','End-of-funnel søkefraser',p,fs);
   if(key==='tags')return buildCard(key,'🏷','Produkttagger','Tagger for AI-salgsassistent og søk',p,fs);
+  if(key==='shipping')return buildCard(key,'📦','Frakt & mål','Produkt- og pakkemål for WooCommerce',p,fs);
   return '';
 }
 function buildCard(key,icon,title,subtitle,p,fs){
@@ -1513,6 +1620,7 @@ function buildBody(key,p,state){
   if(key==='keyphrase')return buildSimpleField(p,'keyphrase','🎯','Produktnavnet som Yoast fokus-keyphrase. Skrives på norsk og matcher det kunden søker etter.');
   if(key==='synonyms')return buildSimpleField(p,'synonyms','🔗','Kommaseparerte søkefraser – end-of-funnel kunder som søker spesifikt etter produktet.');
   if(key==='tags')return buildTagsField(p);
+  if(key==='shipping')return buildShippingField(p);
   return '';
 }
 
@@ -1552,6 +1660,46 @@ function buildTagsField(p){
     </div>
   </div>
   <div class="field-actions"><span class="ai-note">✦ Legges til eksisterende tagger – ikke erstatter</span>${btns('tags',state)}</div>`;
+}
+
+function buildShippingField(p){
+  const s = p.fields.shipping;
+  const state = S.fieldStates[p.id]?.shipping||'pending';
+  const hasData = s.pkgLength || s.pkgWidth || s.pkgHeight || s.pkgWeight;
+  const missing = s.missingFields || [];
+
+  const dim = (label,val,unit='cm')=>`
+    <div style="text-align:center">
+      <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${label}</div>
+      <div style="font-size:18px;font-weight:600;font-family:var(--font-hd);color:var(--text)">${val||'–'}</div>
+      ${val?`<div style="font-size:10px;color:var(--muted)">${unit}</div>`:''}
+    </div>`;
+
+  const grid = (title, l, w, h, wt, highlight=false)=>`
+    <div style="background:${highlight?'var(--add-bg)':'var(--bg)'};border:1px solid ${highlight?'#B8DFC8':'var(--border)'};border-radius:10px;padding:14px 16px;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:600;color:${highlight?'var(--add-txt)':'var(--muted)'};text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px;display:flex;align-items:center;gap:6px">
+        ${highlight?'✦ AI-forslag – ':''}<span>${title}</span>
+        ${s.isEstimate&&highlight?'<span style="font-size:10px;background:var(--warn-bg);color:var(--warn-txt);border-radius:4px;padding:1px 6px;font-weight:600">Estimert</span>':''}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+        ${dim('Lengde',l)}${dim('Bredde',w)}${dim('Høyde',h)}${dim('Vekt',wt,'kg')}
+      </div>
+    </div>`;
+
+  return `<div class="field-content">
+    ${missing.length?`<div style="background:var(--warn-bg);border:1px solid #E8C890;border-radius:8px;padding:9px 13px;margin-bottom:12px;font-size:12.5px;color:var(--warn-txt)">
+      ⚠ Manglende felt estimert av AI: <strong>${missing.join(', ')}</strong>
+    </div>`:''}
+    ${grid('Nåværende produktmål', s.length, s.width, s.height, s.weight, false)}
+    ${hasData
+      ? grid('Foreslåtte pakkemål (til WooCommerce shipping)', s.pkgLength, s.pkgWidth, s.pkgHeight, s.pkgWeight, true)
+      : `<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">Ingen AI-forslag ennå – kjør generering for å beregne pakkemål.</div>`}
+    ${s.notes?`<div style="font-size:12px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;line-height:1.5">📋 ${s.notes}</div>`:''}
+  </div>
+  <div class="field-actions">
+    <span class="ai-note">✦ Pakkemål skrives til WooCommerce shipping-felter via CSV</span>
+    ${btns('shipping',state)}
+  </div>`;
 }
 
 /* DESC */
@@ -1772,6 +1920,8 @@ function buildCSVRows(products) {
     'yoast_title','yoast_metadesc',
     'focus_keyphrase','keyphrase_synonyms',
     'tags',
+    'weight','length','width','height',
+    'pkg_weight','pkg_length','pkg_width','pkg_height',
     'image_1_alt','image_1_title',
     'image_2_alt','image_2_title',
     'image_3_alt','image_3_title',
@@ -1787,12 +1937,23 @@ function buildCSVRows(products) {
     const keyphrase  = fs.keyphrase === 'approved'        ? f.keyphrase.suggested         : '';
     const synonyms   = fs.synonyms === 'approved'         ? f.synonyms.suggested          : '';
     const tags       = fs.tags === 'approved'             ? f.tags.suggested              : '';
+    const sh = f.shipping || {};
+    const weight     = fs.shipping === 'approved' ? (sh.weight    ||'') : '';
+    const length     = fs.shipping === 'approved' ? (sh.length    ||'') : '';
+    const width      = fs.shipping === 'approved' ? (sh.width     ||'') : '';
+    const height     = fs.shipping === 'approved' ? (sh.height    ||'') : '';
+    const pkgWeight  = fs.shipping === 'approved' ? (sh.pkgWeight ||'') : '';
+    const pkgLength  = fs.shipping === 'approved' ? (sh.pkgLength ||'') : '';
+    const pkgWidth   = fs.shipping === 'approved' ? (sh.pkgWidth  ||'') : '';
+    const pkgHeight  = fs.shipping === 'approved' ? (sh.pkgHeight ||'') : '';
     const imgs = fs.altTexts === 'approved' ? (f.altTexts || []) : [];
     const imgCols = [0,1,2].flatMap(i => [
       imgs[i] ? imgs[i].suggested      : '',
       imgs[i] ? imgs[i].suggestedTitle : '',
     ]);
-    return [p.sku, p.name, desc, shortD, yTitle, yMeta, keyphrase, synonyms, tags, ...imgCols];
+    return [p.sku, p.name, desc, shortD, yTitle, yMeta, keyphrase, synonyms, tags,
+            weight, length, width, height, pkgWeight, pkgLength, pkgWidth, pkgHeight,
+            ...imgCols];
   });
 
   return { headers, rows };
@@ -1966,6 +2127,15 @@ function getQuality(key,p){
   if(key==='altTexts'){const imgs=p.fields.altTexts||[];const allHave=imgs.every(i=>(i.suggested||'').length>15);
     const avg=imgs.length?imgs.reduce((a,i)=>a+(i.suggested||'').length,0)/imgs.length:0;
     return[{label:'Alle bilder',ok:allHave},{label:'>15 tegn',ok:avg>15}];}
+  if(key==='shipping'){
+    const s=p.fields.shipping;
+    const hasPkg=!!(s.pkgLength&&s.pkgWidth&&s.pkgHeight&&s.pkgWeight);
+    const hasProd=!!(s.length&&s.width&&(s.height||s.weight));
+    return[
+      {label:'Produktmål',ok:hasProd,warn:!hasProd},
+      {label:'Pakkemål',ok:hasPkg,warn:!hasPkg},
+    ];
+  }
   return[];
 }
 function getMissingWarnings(p){

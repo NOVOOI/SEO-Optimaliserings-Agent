@@ -407,7 +407,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
 
 <!-- VERSION FOOTER -->
-<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.28</div>
+<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.30</div>
 
 <!-- KEYBOARD HELP -->
 <div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
@@ -470,8 +470,8 @@ const BRANDS = {
   '&HAY':{'color':'#6B4DA0','light':'#EDE9FE'},
   'Fritz Hansen':{'color':'#1A3A5C','light':'#E6F1FB'},
 };
-const FLABELS = {description:'Produktbeskrivelse',shortDescription:'Kort beskrivelse',yoast:'Yoast SEO',altTexts:'Alt-tekster',keyphrase:'Focus Keyphrase',synonyms:'Keyphrase synonyms',tags:'Produkttagger',shipping:'Frakt & mål'};
-const FKEYS = ['description','shortDescription','yoast','altTexts','keyphrase','synonyms','tags','shipping'];
+const FLABELS = {description:'Produktbeskrivelse',shortDescription:'Kort beskrivelse',yoast:'Yoast SEO',altTexts:'Alt-tekster',keyphrase:'Focus Keyphrase',tags:'Produkttagger',shipping:'Frakt & mål'};
+const FKEYS = ['description','shortDescription','yoast','altTexts','keyphrase','tags','shipping'];
 
 /* ── DEMO DATA ─────────────────────────────────── */
 const DEMO = [
@@ -527,13 +527,13 @@ const DEMO = [
 ];
 
 /* ── STATE ─────────────────────────────────────── */
-const S={products:[],activeId:null,fieldStates:{},undoStack:[],changelog:[],openFields:{},darkMode:false,statsOpen:false,filter:'all',approvalTimes:[],pendingBatch:null,processed:new Set(),batchSize:10,generating:false,manualDone:new Set(),selectedFields:new Set(['description','shortDescription','yoast','altTexts','keyphrase','synonyms','tags'])};
+const S={products:[],activeId:null,fieldStates:{},undoStack:[],changelog:[],openFields:{},darkMode:false,statsOpen:false,filter:'all',approvalTimes:[],pendingBatch:null,processed:new Set(),batchSize:10,generating:false,manualDone:new Set(),selectedFields:new Set(['description','shortDescription','yoast','altTexts','keyphrase','tags'])};
 
 /* ── INIT ──────────────────────────────────────── */
 function loadDemo(){
   S.products=JSON.parse(JSON.stringify(DEMO));
   S.products.forEach(p=>{
-    S.fieldStates[p.id]={description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending',keyphrase:'pending',synonyms:'pending',tags:'pending',shipping:'pending'};
+    S.fieldStates[p.id]={description:'pending',shortDescription:'pending',yoast:'pending',altTexts:'pending',keyphrase:'pending',tags:'pending',shipping:'pending'};
     S.openFields[p.id]={};
   });
   loadFromStorage();
@@ -587,7 +587,7 @@ async function fetchAndLoad(){
     for(const p of raw){
       const mapped = mapRaw(p);
       S.products.push(mapped);
-      S.fieldStates[mapped.id]={description:'unprocessed',shortDescription:'unprocessed',yoast:'unprocessed',altTexts:'unprocessed',keyphrase:'unprocessed',synonyms:'unprocessed',tags:'unprocessed',shipping:'unprocessed'};
+      S.fieldStates[mapped.id]={description:'unprocessed',shortDescription:'unprocessed',yoast:'unprocessed',altTexts:'unprocessed',keyphrase:'unprocessed',tags:'unprocessed',shipping:'unprocessed'};
       S.openFields[mapped.id]={};
     }
 
@@ -637,7 +637,7 @@ function checkExistingQuality(p){
 /* ── FIELD SELECTION + COST ESTIMATE MODAL ────────── */
 const FIELD_COST = {
   description:0.0035, shortDescription:0.0015, yoast:0.0020,
-  altTexts:0.0025, keyphrase:0.0008, synonyms:0.0008, tags:0.0010, shipping:0.0018
+  altTexts:0.0025, keyphrase:0.0008, tags:0.0010, shipping:0.0018
 };
 const VISION_COST_PER_IMG = 0.0008;
 
@@ -661,7 +661,6 @@ function showGenerateModal(batch){
     {key:'yoast',           label:'Yoast SEO (tittel + meta)', icon:'🔍'},
     {key:'altTexts',        label:'Alt-tekster (med vision)', icon:'🖼'},
     {key:'keyphrase',       label:'Focus Keyphrase', icon:'🎯'},
-    {key:'synonyms',        label:'Keyphrase Synonyms', icon:'🔗'},
     {key:'tags',            label:'Produkttagger', icon:'🏷'},
   ];
 
@@ -1624,7 +1623,6 @@ function buildCardByKey(key,p,fs){
   if(key==='yoast')return buildCard(key,'🔍','Yoast SEO','Engelsk – tittel og meta-description',p,fs);
   if(key==='altTexts')return buildCard(key,'🖼','Alt-tekster','Engelsk – bilder i produktet',p,fs);
   if(key==='keyphrase')return buildCard(key,'🎯','Focus Keyphrase','Primært søkeord for Yoast',p,fs);
-  if(key==='synonyms')return buildCard(key,'🔗','Keyphrase synonyms','End-of-funnel søkefraser',p,fs);
   if(key==='tags')return buildCard(key,'🏷','Produkttagger','Tagger for AI-salgsassistent og søk',p,fs);
   if(key==='shipping')return buildCard(key,'📦','Frakt & mål','Produkt- og pakkemål for WooCommerce',p,fs);
   return '';
@@ -1657,7 +1655,6 @@ function buildBody(key,p,state){
   if(key==='yoast')return buildYoast(p);
   if(key==='altTexts')return buildAlt(p);
   if(key==='keyphrase')return buildSimpleField(p,'keyphrase','🎯','Produktnavnet som Yoast fokus-keyphrase. Skrives på norsk og matcher det kunden søker etter.');
-  if(key==='synonyms')return buildSimpleField(p,'synonyms','🔗','Kommaseparerte søkefraser – end-of-funnel kunder som søker spesifikt etter produktet.');
   if(key==='tags')return buildTagsField(p);
   if(key==='shipping')return buildShippingField(p);
   return '';
@@ -1957,7 +1954,7 @@ function buildCSVRows(products) {
     'sku','product_name',
     'description','short_description',
     'yoast_title','yoast_metadesc',
-    'focus_keyphrase','keyphrase_synonyms',
+    'focus_keyphrase',
     'tags',
     'weight','length','width','height',
     'pkg_weight','pkg_length','pkg_width','pkg_height',
@@ -1975,7 +1972,9 @@ function buildCSVRows(products) {
     const yMeta      = fs.yoast === 'approved'            ? f.yoast.suggestedMeta         : '';
     const keyphrase  = fs.keyphrase === 'approved'        ? f.keyphrase.suggested         : '';
     const synonyms   = fs.synonyms === 'approved'         ? f.synonyms.suggested          : '';
-    const tags       = fs.tags === 'approved'             ? f.tags.suggested              : '';
+    const tags       = fs.tags === 'approved'
+      ? (f.tags.suggested||'').split(',').map(t=>t.trim()).filter(Boolean).join(',')
+      : '';
     const sh = f.shipping || {};
     const weight     = fs.shipping === 'approved' ? (sh.weight    ||'') : '';
     const length     = fs.shipping === 'approved' ? (sh.length    ||'') : '';
@@ -1991,7 +1990,7 @@ function buildCSVRows(products) {
       imgs[i] ? imgs[i].suggested    : '',
       imgs[i] ? imgs[i].suggestedTitle : '',
     ]);
-    return [p.sku, p.name, desc, shortD, yTitle, yMeta, keyphrase, synonyms, tags,
+    return [p.sku, p.name, desc, shortD, yTitle, yMeta, keyphrase, tags,
             weight, length, width, height, pkgWeight, pkgLength, pkgWidth, pkgHeight,
             ...imgCols];
   });

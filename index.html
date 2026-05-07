@@ -407,7 +407,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;background:var
 <div class="stats-panel" id="stats-panel"><div class="stats-inner" id="stats-inner"></div></div>
 
 <!-- VERSION FOOTER -->
-<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.20</div>
+<div id="version-footer" style="position:fixed;bottom:8px;right:12px;font-size:10px;font-family:var(--font-mo);color:var(--border2);z-index:10;pointer-events:none;user-select:none">v0.21</div>
 
 <!-- KEYBOARD HELP -->
 <div class="kb-overlay hidden" id="kb-overlay" onclick="if(event.target===this)hideKb()">
@@ -1922,9 +1922,9 @@ function buildCSVRows(products) {
     'tags',
     'weight','length','width','height',
     'pkg_weight','pkg_length','pkg_width','pkg_height',
-    'image_1_alt','image_1_title',
-    'image_2_alt','image_2_title',
-    'image_3_alt','image_3_title',
+    'image_1_filename','image_1_alt','image_1_title',
+    'image_2_filename','image_2_alt','image_2_title',
+    'image_3_filename','image_3_alt','image_3_title',
   ];
 
   const rows = products.map(p => {
@@ -1948,7 +1948,8 @@ function buildCSVRows(products) {
     const pkgHeight  = fs.shipping === 'approved' ? (sh.pkgHeight ||'') : '';
     const imgs = fs.altTexts === 'approved' ? (f.altTexts || []) : [];
     const imgCols = [0,1,2].flatMap(i => [
-      imgs[i] ? imgs[i].suggested      : '',
+      imgs[i] ? imgs[i].filename     : '',
+      imgs[i] ? imgs[i].suggested    : '',
       imgs[i] ? imgs[i].suggestedTitle : '',
     ]);
     return [p.sku, p.name, desc, shortD, yTitle, yMeta, keyphrase, synonyms, tags,
